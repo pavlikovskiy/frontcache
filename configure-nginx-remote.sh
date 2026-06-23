@@ -7,6 +7,10 @@
 #     /                          -> local Frontcache (80->$FRONTCACHE_HTTP_PORT, 443->$FRONTCACHE_HTTPS_PORT)
 #     /images/ /fs/ /o9r/ /pi/   -> origin host ($ORIGIN_HOST, https)
 #
+# Responses proxied from Frontcache are gzip-compressed: Frontcache can't emit brotli
+# (its HttpClient only decodes gzip), so it serves plaintext and nginx compresses here
+# for clients that accept it. nginx never re-compresses an already-encoded response.
+#
 # Can be run standalone or called from install-frontcache-server-remote.sh
 # (which exports the same env vars). All settings are env-overridable.
 #
@@ -49,6 +53,19 @@ PROXY_HDRS='        proxy_http_version 1.1;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;'
 
+# gzip settings, injected into each server block. Frontcache serves plaintext (it can't
+# produce brotli), so nginx compresses proxied responses for clients that accept gzip.
+# gzip_proxied any is required: nginx's default (off) skips compression for proxied
+# responses. nginx leaves already-encoded (e.g. br pass-through) responses untouched.
+# (text/html is always compressed when gzip is on, regardless of gzip_types.)
+GZIP_CONF='    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 5;
+    gzip_min_length 256;
+    gzip_http_version 1.1;
+    gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml application/rss+xml image/svg+xml;'
+
 # origin location blocks, one per configured path -> $ORIGIN_HOST (https)
 ORIGIN_LOCATIONS=""
 for p in $ORIGIN_PATHS; do
@@ -80,6 +97,8 @@ server {
     # / domain resolution (e.g. the Hystrix stream). Allow them through.
     ignore_invalid_headers off;
 
+${GZIP_CONF}
+
 ${ORIGIN_LOCATIONS}    # Hystrix SSE metrics stream — must NOT be buffered or the
     # console dashboard never receives events (proxy_buffering defaults to on)
     location = /hystrix.stream {
@@ -108,6 +127,8 @@ server {
     # treats as an invalid header name and drops by default — breaking site-key auth
     # / domain resolution (e.g. the Hystrix stream). Allow them through.
     ignore_invalid_headers off;
+
+${GZIP_CONF}
 
     ssl_certificate     /etc/nginx/ssl/frontcache.crt;
     ssl_certificate_key /etc/nginx/ssl/frontcache.key;
