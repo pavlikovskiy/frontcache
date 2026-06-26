@@ -7,18 +7,30 @@
 # the systemd service. Use it for code-only redeploys (e.g. a core bugfix) when the host is
 # already provisioned and configured.
 #
-# It deliberately DOES NOT touch:
-#   - Frontcache configs (FRONTCACHE_HOME/conf: frontcache.properties, fallbacks.conf, bots.conf, ...)
+# By default it DOES NOT touch:
+#   - Frontcache configs (FRONTCACHE_HOME/conf: hystrix.properties, fc-logback.xml, fallbacks.conf, ...)
 #   - the L2 Lucene cache, logs, or frontcache.id
 #   - nginx (front door / gzip / TLS)
 #   - the frontcache-console web app
 #
+# Pass --with-config to ALSO sync FRONTCACHE_HOME/conf from this repo to the remote (e.g. after
+# changing hystrix.properties or fc-logback.xml). nginx is still never touched. The two
+# host-specific files are always preserved on the remote and never overwritten:
+#   - frontcache.id          (node identity, e.g. fc-us.hobbyray.com)
+#   - frontcache.properties  (origin host/port, domains, management port)
+# Each overwritten config is backed up on the remote as <name>.bak-<timestamp> for rollback.
+#
 # The remote host must already have been set up with install-frontcache-server-remote.sh
 # (i.e. ~/$REMOTE_DIR/frontcache-server exists and the '$SERVICE_NAME' systemd unit is installed).
 #
-# Example:
-#   REMOTE_HOST=ec2-54-208-212-231.compute-1.amazonaws.com \
-#   PEM_FILE=~/.ssh/coins-2023.pem ./update-frontcache-code-aws-ec2.sh
+# Examples:
+#   # code only:
+#   REMOTE_HOST=ec2-123-456-789-123.compute-1.amazonaws.com \
+#   PEM_FILE=~/.ssh/your-keys.pem ./update-frontcache-code-aws-ec2.sh
+#
+#   # code + frontcache configs (no nginx):
+#   REMOTE_HOST=ec2-123-456-789-123.compute-1.amazonaws.com \
+#   PEM_FILE=~/.ssh/your-keys.pem ./update-frontcache-code-aws-ec2.sh --with-config
 #
 set -euo pipefail
 
@@ -29,10 +41,24 @@ PEM_FILE="${PEM_FILE:-$HOME/.ssh/your-keys.pem}"
 REMOTE_DIR="${REMOTE_DIR:-opt}"                  # ~/opt/frontcache-server on the remote
 SERVICE_NAME="${SERVICE_NAME:-frontcache}"       # systemd unit name
 
+# ---- args
+WITH_CONFIG=false
+for arg in "$@"; do
+  case "$arg" in
+    --with-config) WITH_CONFIG=true ;;
+    -h|--help) grep -E '^#( |$)' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "ERROR: unknown argument: $arg (use --with-config or --help)" >&2; exit 1 ;;
+  esac
+done
+
 # local frontcache-server dir + the war that build.finalizedBy(copyWar) produces
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_SERVER_DIR="$SCRIPT_DIR/frontcache-server"
 ROOT_WAR="$LOCAL_SERVER_DIR/server/frontcache-base/webapps/ROOT.war"
+
+# FRONTCACHE_HOME/conf synced only with --with-config. Host-specific files are never overwritten.
+LOCAL_CONF_DIR="$LOCAL_SERVER_DIR/FRONTCACHE_HOME/conf"
+CONFIG_EXCLUDES=(frontcache.id frontcache.properties)
 # ------------------------------------------------------------------------------
 
 SSH_TARGET="$REMOTE_USER@$REMOTE_HOST"
@@ -59,6 +85,30 @@ echo "    war: $ROOT_WAR ($(du -h "$ROOT_WAR" | cut -f1))"
 echo ">>> Uploading ROOT.war to $SSH_TARGET ..."
 scp "${SSH_OPTS[@]}" "$ROOT_WAR" "$SSH_TARGET:/tmp/ROOT.war.new"
 
+# ---- optionally stage Frontcache configs (--with-config) ---------------------
+# Upload to a remote staging dir now; the swap block below applies them while the
+# service is stopped (so one restart picks up both the war and the configs). The
+# presence of /tmp/fc-conf-new on the remote is what signals the swap block to apply them.
+if $WITH_CONFIG; then
+  if [ ! -d "$LOCAL_CONF_DIR" ]; then
+    echo "ERROR: config dir not found: $LOCAL_CONF_DIR" >&2
+    exit 1
+  fi
+  echo ">>> Staging Frontcache configs to $SSH_TARGET (host-specific files preserved) ..."
+  UPLOAD_FILES=()
+  for f in "$LOCAL_CONF_DIR"/*; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    skip=false
+    for ex in "${CONFIG_EXCLUDES[@]}"; do [ "$base" = "$ex" ] && skip=true; done
+    if $skip; then echo "    skip (host-specific): $base"; continue; fi
+    UPLOAD_FILES+=("$f")
+    echo "    upload: $base"
+  done
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "rm -rf /tmp/fc-conf-new && mkdir -p /tmp/fc-conf-new"
+  scp "${SSH_OPTS[@]}" "${UPLOAD_FILES[@]}" "$SSH_TARGET:/tmp/fc-conf-new/"
+fi
+
 echo ">>> Swapping war and restarting '$SERVICE_NAME' on $SSH_TARGET ..."
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "
   set -e
@@ -84,13 +134,32 @@ ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "
   rm -rf \"\$WEBAPPS/ROOT\"
   rm -rf /tmp/jetty-* 2>/dev/null || true
 
+  # apply staged configs (only present when run with --with-config). Each overwritten
+  # file is backed up as <name>.bak-\$TS. frontcache.id / frontcache.properties were never
+  # staged, so they're left untouched on the remote.
+  if [ -d /tmp/fc-conf-new ]; then
+    CONF_DIR=\"\$REMOTE_HOME/$REMOTE_DIR/frontcache-server/FRONTCACHE_HOME/conf\"
+    for nf in /tmp/fc-conf-new/*; do
+      [ -e \"\$nf\" ] || continue
+      base=\$(basename \"\$nf\")
+      [ -f \"\$CONF_DIR/\$base\" ] && cp -p \"\$CONF_DIR/\$base\" \"\$CONF_DIR/\$base.bak-\$TS\"
+      mv \"\$nf\" \"\$CONF_DIR/\$base\"
+      echo \"   config updated: \$base (previous kept at \$base.bak-\$TS)\"
+    done
+    rm -rf /tmp/fc-conf-new
+  fi
+
   sudo systemctl start $SERVICE_NAME
   sleep 3
   sudo systemctl --no-pager status $SERVICE_NAME | head -5 || true
   echo \"   (previous war kept at \$WEBAPPS/ROOT.war.bak-\$TS)\"
 "
 
-echo ">>> Done. Frontcache Java code updated on $REMOTE_HOST (configs, cache & nginx untouched)."
+if $WITH_CONFIG; then
+  echo ">>> Done. Frontcache code + configs updated on $REMOTE_HOST (frontcache.id, frontcache.properties, cache & nginx untouched)."
+else
+  echo ">>> Done. Frontcache Java code updated on $REMOTE_HOST (configs, cache & nginx untouched)."
+fi
 echo "    Verify:   curl -sI https://$REMOTE_HOST/ | head"
 echo "    Logs:     ssh -i $PEM_FILE $SSH_TARGET 'sudo journalctl -u $SERVICE_NAME -f'"
 echo "    Rollback: on the remote, restore the newest ROOT.war.bak-* and 'sudo systemctl restart $SERVICE_NAME'"
