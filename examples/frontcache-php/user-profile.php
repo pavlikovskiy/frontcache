@@ -1,5 +1,5 @@
 <?php
-header('X-frontcache.component.maxage: bot:3h');
+header('x-frontcache-component-maxage: bot:3h');
 ?>
 
     <div class="col-sm-3 demo-header" >

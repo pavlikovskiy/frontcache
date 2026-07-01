@@ -1,5 +1,5 @@
 <?php
-header('X-frontcache.component.maxage: 5m');
+header('x-frontcache-component-maxage: 5m');
 ?>
   <div class="row">
     <div class="col-sm-12 demo-footer" style="">

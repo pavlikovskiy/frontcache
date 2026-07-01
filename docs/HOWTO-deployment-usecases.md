@@ -56,7 +56,7 @@ flowchart TD
     D -- "hit & fresh" --> E["Serve cached fragment(s)"]
     D -- "hit & stale + refresh=soft" --> F["Serve stale now,<br/>refresh origin in background"]
     D -- "miss" --> G["FC_ThroughCache:<br/>call origin (Hystrix)"]
-    G -- "origin OK" --> H["Read X-frontcache.* headers,<br/>store per maxage/level/tags"]
+    G -- "origin OK" --> H["Read x-frontcache-* headers,<br/>store per maxage/level/tags"]
     G -- "5XX / circuit open" --> I["FallbackResolver<br/>(fallbacks.conf)"]
     H --> J["IncludeProcessor scans body<br/>for fc:include, resolves each<br/>(recurse this whole flow)"]
     E --> J
@@ -77,10 +77,10 @@ Source: `frontcache-core/.../core/FCHeaders.java`, taglib `META-INF/fc.tld`.
 
 | Header | Meaning | Example |
 |--------|---------|---------|
-| `X-frontcache.component.maxage` | TTL. `0`=no cache (default), `-1`/`forever`=forever, or `60`/`15m`/`24h`. Supports `bot:`/`browser:` prefixes | `24h`, `bot:30d` |
-| `X-frontcache.component.tags` | Pipe-separated invalidation tags | `product\|catalog` |
-| `X-frontcache.component.refresh` | `regular` (default) or `soft` (serve-stale-while-revalidate) | `soft` |
-| `X-frontcache.component.cache-level` | `L1` or `L2` (default L2) | `L1` |
+| `x-frontcache-component-maxage` | TTL. `0`=no cache (default), `-1`/`forever`=forever, or `60`/`15m`/`24h`. Supports `bot:`/`browser:` prefixes | `24h`, `bot:30d` |
+| `x-frontcache-component-tags` | Pipe-separated invalidation tags | `product\|catalog` |
+| `x-frontcache-component-refresh` | `regular` (default) or `soft` (serve-stale-while-revalidate) | `soft` |
+| `x-frontcache-component-cache-level` | `L1` or `L2` (default L2) | `L1` |
 
 **JSP tag equivalents** (taglib `http://frontcache.org/core`, prefix `fc`):
 
@@ -121,7 +121,7 @@ flowchart LR
         F["FrontCacheFilter<br/>url-pattern /example/*"]
         App["Your servlets / JSPs<br/>(MVC controllers)"]
         F -->|cache miss| App
-        App -->|"response + X-frontcache.* headers"| F
+        App -->|"response + x-frontcache-* headers"| F
     end
     F -.->|L1 Ehcache| L1[("in-memory")]
     F -.->|L2 Lucene| L2[("FRONTCACHE_HOME/cache")]
@@ -184,7 +184,7 @@ passing the request down the filter chain.
    (Or set the `FRONTCACHE_HOME` env var.)
 
 5. **Annotate cacheability in your views.** Add `<fc:component .../>` to JSPs (or emit the
-   `X-frontcache.component.*` headers from controllers) and break pages into
+   `x-frontcache-component-*` headers from controllers) and break pages into
    `<fc:include url=".../>` fragments so hot static parts cache while personalized parts stay
    dynamic.
 
@@ -195,7 +195,7 @@ passing the request down the filter chain.
 ### 1.3 Verify
 
 Hit a `/example/*` URL twice; second response should carry Frontcache trace headers
-(`X-frontcache.id`, and with `front-cache.log-to-headers=true`, timing headers). The e2e
+(`x-frontcache-id`, and with `front-cache.log-to-headers=true`, timing headers). The e2e
 harness for this mode is `frontcache-tests` (`./tests.sh`).
 
 ---
@@ -287,9 +287,9 @@ flowchart LR
    headers directly from whatever framework you use:
 
    ```
-   X-frontcache.component.maxage: 1h
-   X-frontcache.component.tags: catalog|product-42
-   X-frontcache.component.refresh: soft
+   x-frontcache-component-maxage: 1h
+   x-frontcache-component-tags: catalog|product-42
+   x-frontcache-component-refresh: soft
    ```
 
    And embed fragment markers in HTML the origin returns:
@@ -323,12 +323,12 @@ sequenceDiagram
     else miss / stale
         FC->>O: GET /store/product/42 (Hystrix FC_ThroughCache)
         alt origin 200
-            O-->>FC: HTML + X-frontcache.* headers
+            O-->>FC: HTML + x-frontcache-* headers
             FC->>FC: store per maxage/tags/level<br/>resolve fc:include (concurrent)
             FC-->>C: assembled page
         else origin 5XX / circuit open
             FC->>FC: FallbackResolver (fallbacks.conf)
-            FC-->>C: fallback content (X-frontcache.fallback-is-used)
+            FC-->>C: fallback content (x-frontcache-fallback-is-used)
         end
     end
 ```
@@ -418,8 +418,8 @@ Two caching tiers:
    cluster.removeFromCache(siteKey, "/store/product/42.*");
    ```
 
-   This fans the `invalidate` action (with `X-frontcache.site-key`) to every node so a content
-   change clears all tiers in all regions. Tag-based invalidation (`X-frontcache.component.tags`)
+   This fans the `invalidate` action (with `x-frontcache-site-key`) to every node so a content
+   change clears all tiers in all regions. Tag-based invalidation (`x-frontcache-component-tags`)
    lets one product update clear every fragment carrying that tag.
 
 ### 3.3 Multi-region request + invalidation flow
@@ -444,7 +444,7 @@ sequenceDiagram
         else filter miss
             J->>D: query
             D-->>J: data
-            J-->>E: HTML + X-frontcache.* headers
+            J-->>E: HTML + x-frontcache-* headers
         end
         E->>E: store + resolve includes
         E-->>U: page
@@ -469,7 +469,7 @@ Served by `FrontCacheIOServlet` at **`/frontcache-io`**; `action=<name>` query p
 
 | Action | Purpose | Key params |
 |--------|---------|-----------|
-| `invalidate` | Evict cache entries matching a regexp | `filter` (regexp), `X-frontcache.site-key` header |
+| `invalidate` | Evict cache entries matching a regexp | `filter` (regexp), `x-frontcache-site-key` header |
 | `get-cache-state` | Cache processor type + item count | — |
 | `get-cached-keys` | Stream all cached URLs | — |
 | `get-from-cache` | Fetch one cached entry | `key` |

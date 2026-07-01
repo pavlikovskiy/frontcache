@@ -1,5 +1,5 @@
 <?php
-header('X-frontcache.component.maxage: 1m');
+header('x-frontcache-component-maxage: 1m');
 ?>
 <!DOCTYPE html>
 <html lang="en">

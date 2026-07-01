@@ -19,5 +19,5 @@
   <line x1="470" y1="100" x2="576" y2="95" stroke="#16a34a" stroke-dasharray="4 3" marker-end="url(#a)"/>
   <line x1="470" y1="115" x2="576" y2="200" stroke="#16a34a" stroke-dasharray="4 3" marker-end="url(#a)"/>
   <line x1="350" y1="250" x2="350" y2="292" stroke="#ca8a04" stroke-dasharray="4 3"/>
-  <text x="150" y="200" fill="#64748b">response + X-frontcache.* headers ↑ / cache miss ↓</text>
+  <text x="150" y="200" fill="#64748b">response + x-frontcache-* headers ↑ / cache miss ↓</text>
 </svg>

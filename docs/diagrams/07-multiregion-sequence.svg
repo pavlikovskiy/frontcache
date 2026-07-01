@@ -31,7 +31,7 @@
   <line x1="520" y1="292" x2="364" y2="292" stroke="#475569" stroke-dasharray="5 3" marker-end="url(#a)"/><text x="370" y="286">cached fragment (no DB hit)</text>
   <line x1="520" y1="340" x2="656" y2="340" stroke="#475569" marker-end="url(#a)"/><text x="530" y="334">query</text>
   <line x1="660" y1="366" x2="524" y2="366" stroke="#475569" stroke-dasharray="5 3" marker-end="url(#a)"/><text x="540" y="360">data</text>
-  <line x1="520" y1="394" x2="364" y2="394" stroke="#475569" stroke-dasharray="5 3" marker-end="url(#a)"/><text x="370" y="388">HTML + X-frontcache.* headers</text>
+  <line x1="520" y1="394" x2="364" y2="394" stroke="#475569" stroke-dasharray="5 3" marker-end="url(#a)"/><text x="370" y="388">HTML + x-frontcache-* headers</text>
   <path d="M360,420 h55 v20 h-53" fill="none" stroke="#475569" marker-end="url(#a)"/><text x="420" y="427">store + resolve includes</text>
   <line x1="360" y1="460" x2="74" y2="460" stroke="#475569" stroke-dasharray="5 3" marker-end="url(#a)"/><text x="90" y="454">page</text>
   <line x1="35" y1="488" x2="835" y2="488" stroke="#cbd5e1" stroke-dasharray="2 2"/><text x="370" y="484" fill="#64748b">Note: on content change</text>

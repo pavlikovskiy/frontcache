@@ -92,9 +92,9 @@ server {
     listen [::]:80 default_server;
     server_name _;
 
-    # Frontcache headers (e.g. X-frontcache.site-key) contain a dot, which nginx
-    # treats as an invalid header name and drops by default — breaking site-key auth
-    # / domain resolution (e.g. the Hystrix stream). Allow them through.
+    # Frontcache header names are hyphenated (e.g. x-frontcache-site-key), which are valid
+    # header names, so this is no longer strictly required. Kept as defense-in-depth in case a
+    # legacy client still sends the old dotted names (which nginx would otherwise drop).
     ignore_invalid_headers off;
 
 ${GZIP_CONF}
@@ -123,9 +123,9 @@ server {
     listen [::]:443 ssl default_server;
     server_name _;
 
-    # Frontcache headers (e.g. X-frontcache.site-key) contain a dot, which nginx
-    # treats as an invalid header name and drops by default — breaking site-key auth
-    # / domain resolution (e.g. the Hystrix stream). Allow them through.
+    # Frontcache header names are hyphenated (e.g. x-frontcache-site-key), which are valid
+    # header names, so this is no longer strictly required. Kept as defense-in-depth in case a
+    # legacy client still sends the old dotted names (which nginx would otherwise drop).
     ignore_invalid_headers off;
 
 ${GZIP_CONF}

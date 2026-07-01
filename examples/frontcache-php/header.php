@@ -1,5 +1,5 @@
 <?php
-header('X-frontcache.component.maxage: 3m');
+header('x-frontcache-component-maxage: 3m');
 ?>
   <div class="row">
     
