@@ -387,7 +387,8 @@ curl -s -H "x-frontcache-site-key: YOUR_SITE_KEY" \
 ## Download reference
 
 Everything lives under `https://repo.eternita.co/maven2/org/frontcache/`, and every artifact has
-a companion `.sha256`.
+a companion `.sha256`. File names below; **clickable per-version links, for 2.8.0 and 2.7.0
+alike, are in [downloads.md](downloads.md)**.
 
 | What | Coordinate / file |
 | --- | --- |
@@ -432,6 +433,7 @@ Elasticsearch + Kibana with ready-made dashboards.
 
 ---
 
+Downloads: [downloads.md](downloads.md) ·
 Concepts: [concept.md](concept.md) ·
 Topologies: [deployment-usecases.md](deployment-usecases.md) ·
 Licensing: <https://www.eternita.co/frontcache.html>
