@@ -3,6 +3,7 @@
 
 | |                                                                                                                         |
 | --- |-------------------------------------------------------------------------------------------------------------------------|
+| **See it** | [Interactive walkthrough](demo/) — the request path, fragments, hits, invalidation, guard, topologies, cost |
 | **See the payoff** | [Value proposition](value.md) — measured A/B: 6.1x throughput, 98.7% less origin load |
 | **Measure it yourself** | [Benchmark harness](../benchmark) — replay your own request log against your own node |
 | **Understand it** | [Concepts](concept.md) — fragment caching, request lifecycle, ...                                            |
