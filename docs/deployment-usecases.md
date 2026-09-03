@@ -57,7 +57,8 @@ passing the request down the filter chain.
    ```
 
    Provide the rest of the `conf/` files — `bots.conf`, `dynamic-urls.conf`, `fallbacks.conf`,
-   `fc-l1-ehcache-config.xml`, `resilience.properties`, `fc-logback.xml`; what each one does is in
+   `guard-rules.conf`, `fc-l1-ehcache-config.xml`, `resilience.properties`, `fc-logback.xml`; what
+   each one does is in
    [concept §7](concept.md#7-configuration-lives-in-frontcache_home).
 
 4. **Pass JVM system properties** when launching the container:
@@ -127,7 +128,7 @@ configured origin.
    To front several sites, run a node per site.
 
 3. **Configure behavior in `conf/`** — `bots.conf`, `dynamic-urls.conf`, `fallbacks.conf`,
-   `fc-l1-ehcache-config.xml`, `resilience.properties`; each file's job is in
+   `guard-rules.conf`, `fc-l1-ehcache-config.xml`, `resilience.properties`; each file's job is in
    [concept §7](concept.md#7-configuration-lives-in-frontcache_home). For a proxy tier
    the two that matter most on day one are `dynamic-urls.conf` (keep carts/login/admin
    uncached) and `fallbacks.conf` (what users see when the origin is down).

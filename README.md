@@ -13,6 +13,7 @@
 | **Download it**       | [Downloads](docs/downloads.md) — direct links to every artifact, 2.8.0 and 2.7.0                               |
 | **Choose a topology** | [Deployment use cases](docs/deployment-usecases.md) — filter, standalone proxy, or multi-region                |
 | **See it work**       | [Java / Spring Boot](examples/frontcache-spring) · [PHP](examples/frontcache-php) — each runs with one command |
+| **See what changed**  | [Release notes](docs/release-notes/) — 2.6.0, 2.7.0, 2.8.0                                                     |
 | **Read more**         | [Documentation index](docs/doc-index.md)         |
 
 Quickest look, if you have Docker:

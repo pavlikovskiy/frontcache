@@ -8,12 +8,14 @@
 | **Understand it** | [Concepts](concept.md) — fragment caching, request lifecycle, ...                                            |
 | **Install it** | [Install guide](install-guide.md) — library, archive, installer script, or container                                    |
 | **Download it** | [Downloads](downloads.md) — direct links to every artifact for 2.8.0 and 2.7.0, and their checksums |
+| **See what changed** | [Release notes](release-notes/) — 2.6.0, 2.7.0 and 2.8.0: what breaks, what to do, what kept its old name |
 | **Run it in containers** | [Docker options](docker.md) — server, console, nginx front door, or the ELK stack                            |
 | **Choose a topology** | [Deployment use cases](deployment-usecases.md) — filter, standalone proxy, or multi-region                              |
 | **See it work** | [Java / Spring Boot](../examples/frontcache-spring) · [PHP](../examples/frontcache-php) — each runs with one command    |
 | **Tell it what to cache** | [HTTP headers](http-headers.md) — the header contract an origin drives caching with, in any language                 |
 | **...from a Java app** | [JSP tags](jsp-tags.md) — `fc:component` and `fc:include`, the tag form of those headers                            |
-| **Protect a node** | [Guard rules](guard-getting-started.md) - another way to reduce load on origin                               |
+| **...for a grid or a list** | [Include combining](include-combining.md) — batch the fragments one page is missing into a single origin call |
+| **Protect a node** | [Guard rules](guard-getting-started.md) — reject junk traffic and rate-limit one loud client before either costs anything |
 | **Survive a bad origin** | [Resilience command flow](resilience-command-flow.md) — how every origin call is circuit-broken, and what serves a fallback |
 | **Lock it down** | [Security](security.md) — the site key, the management port, and the invalidation blast radius                  |
 | **Put it behind nginx** | [Front door](../examples/front-door) — nginx on 80/443 in front of Frontcache, as containers or on a VM                 |

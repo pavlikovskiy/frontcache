@@ -84,6 +84,7 @@ state, and the first thing to check when "nothing is being cached".
 
 <fc:include url="/common/header.jsp" />
 <fc:include url="/common/recommendations" call="async" />
+<fc:include url="/store/cell?id=42" combine="true" />
 <fc:include url="/seo/footer" client="bot" />
 ```
 
@@ -102,10 +103,19 @@ split, and a cache miss on one fragment does not cost the others.
 | `url` | required | the fragment to resolve (relative to the same origin) |
 | `call` | `sync` (default), `async` | `sync` fragments are fetched in parallel and waited for, and their content goes into the page. `async` is fire-and-forget: the call is made but nothing is waited for and **nothing is inserted** — for counters and pings that must not slow a page served from cache |
 | `client` | `bot`, `browser` | include the fragment only for that client class (per `bots.conf`); for the other class the marker is replaced with an empty string |
+| `combine` | `true`, or a group name | batch this fragment with its siblings into **one** origin call when they miss the cache — see [include-combining.md](include-combining.md) |
 
 `sync` includes that time out (`front-cache.include-processor.impl.concurrent.timeout`) fall back
 through the `FallbackResolver`, so one slow fragment degrades rather than failing the page;
 `async` includes get no fallback, since nothing was being waited for.
+
+Fragmenting a page costs the origin one request per fragment while they are cold, which for an
+origin that batches its data access at page level multiplies backend work by the number of
+fragments. `combine="true"` is the answer to that: the edge gathers the fragments that missed into a
+single origin call, and the origin answers them in one batch — each part still cached under its own
+key, with its own TTL and tags. It is opt-in twice, in the markup *and* at the origin, and an origin
+without the handler renders correctly and gains nothing. See
+[include-combining.md](include-combining.md).
 
 This is what makes a personalized page cacheable: the cart badge stays dynamic
 (`maxage=0` or a `dynamic-urls.conf` entry) while the header, nav, footer and product body cache
@@ -183,7 +193,9 @@ all four into Elasticsearch + Kibana with ready-made dashboards.
 - Pick a topology — filter, standalone proxy, or GSLB multi-region:
   [deployment-usecases.md](deployment-usecases.md)
 - Install it: [install-guide.md](install-guide.md)
-- Reject bad traffic at the edge: [guard-getting-started.md](guard-getting-started.md)
+- Reject bad traffic at the edge, and rate-limit one loud client:
+  [guard-getting-started.md](guard-getting-started.md)
+- Stop fragmenting from multiplying origin work: [include-combining.md](include-combining.md)
 - Circuit breakers in detail: [resilience-command-flow.md](resilience-command-flow.md)
 - Run something: [JSP](../examples/frontcache-jsp) · [Spring Boot](../examples/frontcache-spring) · [PHP](../examples/frontcache-php)
 
