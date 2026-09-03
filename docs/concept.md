@@ -48,8 +48,10 @@ every example and every install channel ships with.
 
 ## 4. Request lifecycle
 
-Applies to every topology, and recurses for each `fc:include` in the assembled page.
-<img src="diagrams/02-request-lifecycle.svg" alt="Request lifecycle" width="800"/>
+Applies to every topology, and recurses for each `fc:include` in the assembled page. It begins with
+the guard rules — the checks that answer a request before it reaches cache or origin at all
+([guard-getting-started.md](guard-getting-started.md)).
+<img src="diagrams/02-request-lifecycle.svg" alt="Request lifecycle" width="820"/>
 
 The resilience command names in that flow (`FC_Total`, `FC_ThroughCache*`, `FC_BypassCache`), their
 group keys and their isolation strategies are covered in

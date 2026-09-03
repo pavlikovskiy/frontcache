@@ -89,8 +89,8 @@ Hit a `/example/*` URL twice; second response should carry Frontcache trace head
 ## 2. Use case #2 — Frontcache standalone, in front of an any-language web app
 
 **When to use:** your app is PHP/Python/Node/Ruby/etc., or you want cache isolated on its own
-host/tier. Frontcache runs as a reverse proxy (`FrontCacheServlet`) and forwards misses to a
-configured origin.
+host/tier. Frontcache runs as a reverse proxy (FrontCache, standalone mode) and forwards misses to
+a configured origin.
 
 ### 2.1 Topology
 
