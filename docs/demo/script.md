@@ -184,7 +184,8 @@ re-cutting anything around it. Plan §7.3.
 >
 > Two honesty notes, because they are the reason to trust the rest. The worst case got worse:
 > maximum latency went from two hundred ninety-five milliseconds to seven hundred seventy-five,
-> because six times more traffic now queues on the small uncached remainder. And that ninety-nine
+> because six times more traffic now queues on the small uncached remainder — and p99, forty-two
+> percent better, gained the least of any percentile for the same reason. And that ninety-nine
 > percent hit ratio is a hot working set — over the full six hundred eighty-one thousand request
 > log, the same harness measures about sixty-seven percent. Expect a number between them.
 >
@@ -210,7 +211,7 @@ Every figure spoken or shown, its source, and the caveat it must carry (plan §5
 | 79,900 → 1,003 origin renders (−98.7%) | scene 8 | value.md §3 | same run |
 | 6.1× throughput (172.4 → 1054.0 req/s) | scene 8 | value.md §3 | at *fixed* concurrency — a floor on headroom, not a ceiling (value.md §6) |
 | 7.26 GB transferred by both runs | scene 8 | value.md §2 | it is what "byte-identical content" means here |
-| max 295.2 ms → 775.4 ms (worse) | scene 8 | value.md §3, §6 | keep it — it buys the rest their credibility |
+| max 295.2 ms → 775.4 ms (worse); p99 −42%, the smallest gain | scene 8 | value.md §3, §6 | keep it — it buys the rest their credibility |
 | 98.74% hit ratio / ~66.7% over the full 681k log | scene 8 | value.md §3, §6 | always shown as a *range*, never 98.74% alone as a promise |
 | app tier serves 1.3% | scene 8 | value.md §3 (1,003 / 79,899) | arithmetic on the row above, same caveats |
 
@@ -218,7 +219,8 @@ Every figure spoken or shown, its source, and the caveat it must carry (plan §5
 volume from the live deployment (plan §7.4), and any modelled arithmetic — which is why scene 5
 is held (plan §7.3).
 
-**One inconsistency in the source, and how this script handles it.** [value.md §6](../value.md)
-says in prose "the p99 and max got worse", but its own §3 table shows p99 improving 208.1 ms →
-120.3 ms (−42%) and only *max* getting worse (295.2 → 775.4 ms). The script says **max**, which
-is what the table supports. Worth fixing in value.md's prose either way.
+**A note on one number, since it was wrong in the source until now.** [value.md §6](../value.md)
+used to say in prose "the p99 and max got worse", while its own §3 table showed p99 *improving*
+208.1 → 120.3 ms (−42%) and only *max* getting worse (295.2 → 775.4 ms). value.md's prose has
+been corrected to match its table; this script says **max**, and adds the honest second half —
+p99 gained least of any percentile (−42%, against −96% at p50), for the same reason.

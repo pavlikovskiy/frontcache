@@ -1281,7 +1281,8 @@ SCENES.push({
     const honest = g(root, {opacity:0});
     add(honest,"rect",{x:940,y:TY,width:600,height:250,rx:9,fill:"var(--amber-bg)",stroke:"var(--amber)"});
     add(honest,"text",{x:960,y:TY+30,class:"lbl","font-weight":600,fill:"var(--amber)"},"Read these two before you quote the rest");
-    [ "Max latency got worse: 295.2 ms → 775.4 ms. 6.1× more traffic now",
+    [ "Max latency got worse: 295.2 ms → 775.4 ms, and p99 gained least of",
+      "any percentile (−42%, against −96% at p50). 6.1× more traffic now",
       "queues on the ~1.3% that still reaches the origin. If your SLO is a",
       "hard maximum, size the origin for the uncached fraction.",
       "",
