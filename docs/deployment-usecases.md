@@ -161,7 +161,7 @@ a configured origin.
 7. **Invalidate from app code** using `frontcache-agent` (minimal httpclient-only jar):
 
    ```java
-   FrontCacheAgent agent = new FrontCacheAgent("http://fc-host:9080");
+   FrontCacheAgent agent = new FrontCacheAgent("https://fc-host.example.com");
    agent.removeFromCache(siteKey, "/store/product-details-42.*"); // regexp filter
    ```
 
@@ -218,10 +218,10 @@ Two caching tiers:
 
    ```java
    FrontCacheAgentCluster cluster = new FrontCacheAgentCluster(
-       "http://edge-us-1:9080",
-       "http://edge-eu-1:9080",
-       "http://edge-apac-1:9080",
-       "http://origin:9080");          // include the origin filter node
+       "https://edge-us-1.example.com",
+       "https://edge-eu-1.example.com",
+       "https://edge-apac-1.example.com",
+       "https://origin.example.com");          // include the origin filter node
    cluster.removeFromCache(siteKey, "/store/product/42.*");
    ```
 
