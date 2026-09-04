@@ -7,7 +7,7 @@
 
 |                       |                                                                                                                |
 |-----------------------|----------------------------------------------------------------------------------------------------------------|
-| **See it**            | [Interactive walkthrough](docs/demo/) — 7 schematic scenes, 5:20, drive it yourself                  |
+| **See it**            | [Interactive walkthrough](docs/demo/) — 7 schematic scenes, 5:30, drive it yourself                  |
 | **See the payoff**    | [Value proposition](docs/value.md) — measured A/B on 100k real requests                             |
 | **Understand it**     | [Concepts](docs/concept.md) — fragment caching, request lifecycle, ...                              |
 | **Install it**        | [Install guide](docs/install-guide.md) — library, archive, installer script, or container                      |

@@ -110,6 +110,29 @@ svg .h{font-size:15px;font-weight:600}
 svg .big{font-size:34px;font-weight:600;font-variant-numeric:tabular-nums}
 svg .huge{font-size:52px;font-weight:600;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){ .chapters .fill{transition:none} }
+
+/* ---------- ?render=1 — the MP4 frame source (output B) ----------
+   The stage alone, full-bleed 16:9, no page furniture. Driven by
+   window.FCDemo.seekGlobal(t) from the frame grabber. */
+body.render{background:var(--paper)}
+body.render .app{max-width:none;margin:0;padding:0}
+body.render header.top,
+body.render .chapters,
+body.render .transport,
+body.render .rail,
+body.render footer.foot{display:none}
+body.render .stagewrap{border-radius:0;box-shadow:none;background:var(--paper)}
+body.render .stage{width:100vw;height:100vh;display:block}
+.caption{
+  position:absolute; left:7%; right:23.5%; bottom:1.4%;
+  text-align:center; font-size:2.75vh; line-height:1.32; color:var(--ink);
+  pointer-events:none; opacity:0
+}
+.caption span{
+  background:rgba(255,255,255,.92); border:1px solid var(--line-2);
+  border-radius:6px; padding:.28em .62em; box-decoration-break:clone;
+  -webkit-box-decoration-break:clone
+}
 </style>
 </head>
 <body>
@@ -117,7 +140,7 @@ svg .huge{font-size:52px;font-weight:600;font-variant-numeric:tabular-nums}
 
 <header class="top">
   <h1>Frontcache — <b>interactive walkthrough</b></h1>
-  <p class="tag">7 scenes · 5:20 · click through it, or press play</p>
+  <p class="tag">7 scenes · 5:30 · click through it, or press play</p>
   <div class="right">
     <a href="../value.md">The measured payoff</a>
     <a href="../concept.md">Concepts</a>
@@ -129,12 +152,13 @@ svg .huge{font-size:52px;font-weight:600;font-variant-numeric:tabular-nums}
 
 <div class="stagewrap">
   <svg class="stage" id="stage" viewBox="0 0 1600 900" role="img" aria-labelledby="stagetitle"></svg>
+  <div class="caption" id="caption" aria-live="off"><span></span></div>
 </div>
 
 <div class="transport">
   <button id="play" aria-keyshortcuts="k">▶ Play</button>
   <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Scene position">
-  <span class="clock" id="clock">0:00 / 5:20</span>
+  <span class="clock" id="clock">0:00 / 5:30</span>
 </div>
 
 <div class="rail">
@@ -1226,7 +1250,7 @@ SCENES.push({
 
 /* ---------------------------------------------------------------- scene 8 */
 SCENES.push({
-  num:8, name:"What it costs the origin", dur:45,
+  num:8, name:"What it costs the origin", dur:55,
   lands:"100,000 replayed production requests: <em>98.7% fewer origin renders</em>, byte-identical content, application unchanged.",
   sources:[
     ["The full A/B: method, results, and how to read them honestly", "../value.md"],
@@ -1325,9 +1349,9 @@ SCENES.push({
         });
         fade(table,  seg(t,15,16.4));
         trows.forEach((r,i) => r.setAttribute("opacity", seg(t,15.4+i*.7,16.4+i*.7)));
-        fade(honest, seg(t,24,25.4));
-        fade(below,  seg(t,32,33.4));
-        fade(cta,    seg(t,38,39.4));
+        fade(honest, seg(t,26,27.4));
+        fade(below,  seg(t,36,37.4));
+        fade(cta,    seg(t,44,45.4));
       },
       counters(t){
         const u = easeOut(seg(t,1,12));
@@ -1368,7 +1392,10 @@ const driveEl  = document.getElementById("drive");
 const readEl   = document.getElementById("readout");
 const titleEl  = document.getElementById("stagetitle");
 const driveHead= document.getElementById("drivehead");
+const capEl    = document.getElementById("caption");
+const capSpan  = capEl.firstElementChild;
 const TOTAL    = SCENES.reduce((a,s) => a + s.dur, 0);
+let CUES = null;                                  // set by FCDemo.setCaptions()
 const offsetOf = i => SCENES.slice(0,i).reduce((a,s) => a + s.dur, 0);
 
 let cur = {idx:-1, scene:null, inst:null, hud:null, t:0, playing:false, driving:false, lastRead:0};
@@ -1415,7 +1442,7 @@ function mount(idx, t){
     driveEl.innerHTML = '<p class="nodrive">This scene runs on the timeline — scenes 2, 3 and 4 are the ones you drive. ' +
                         'Scrub it, or use ← → to step through the beats.</p>';
   }
-  if (location.hash !== "#scene-" + s.num) history.replaceState(null, "", "#scene-" + s.num);
+  if (!RENDER && location.hash !== "#scene-" + s.num) history.replaceState(null, "", "#scene-" + s.num);
   render();
 }
 function refreshReadout(){
@@ -1444,6 +1471,11 @@ function render(){
     ch.fill.style.width = i < cur.idx ? "100%" : i === cur.idx ? (100*cur.t/s.dur) + "%" : "0%";
   });
   if (cur.driving && performance.now() - cur.lastRead > 200){ cur.lastRead = performance.now(); refreshReadout(); }
+  if (CUES){                                      // burned captions, in global time
+    const c = CUES.find(q => gt >= q.start && gt < q.end);
+    capSpan.textContent = c ? c.text : "";
+    capEl.style.opacity = c ? 1 : 0;
+  }
 }
 function play(on){
   cur.playing = on;
@@ -1480,6 +1512,8 @@ window.FCDemo = {
   total: TOTAL,
   scenes: SCENES.map((s,i) => ({index:i, num:s.num, name:s.name, dur:s.dur, offset:offsetOf(i)})),
   seek(index, t){ mount(index); cur.driving = false; cur.t = t; render(); },
+  /** burn-in captions for the MP4: [{start,end,text}] in GLOBAL seconds */
+  setCaptions(cues){ CUES = cues && cues.length ? cues : null; render(); },
   seekGlobal(gt){
     let i = 0, acc = 0;
     while (i < SCENES.length - 1 && acc + SCENES[i].dur <= gt){ acc += SCENES[i].dur; i++; }
@@ -1489,6 +1523,8 @@ window.FCDemo = {
 };
 
 /* ---- boot ---- */
+const RENDER = new URLSearchParams(location.search).has("render");
+if (RENDER) document.body.classList.add("render");
 const fromHash = (location.hash.match(/^#scene-(\d+)$/) || [])[1];
 const startIdx = Math.max(0, SCENES.findIndex(s => String(s.num) === fromHash));
 mount(startIdx === -1 ? 0 : startIdx);

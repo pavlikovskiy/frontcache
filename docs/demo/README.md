@@ -13,7 +13,7 @@ GitHub Pages site or any static host would serve, unchanged.
 
 | | |
 |---|---|
-| Scenes | 7, each self-contained, 35–55 s · **5:20** end to end |
+| Scenes | 7, each self-contained, 35–55 s · **5:30** end to end |
 | Interactive | scenes 2, 3 and 4 — the viewer drives the state and the counters answer |
 | Narration script | [script.md](script.md) — the source of truth for every spoken line and every number |
 | Plan it implements | `docs/intro-vidio-plan.md` in the development repository |
@@ -103,44 +103,50 @@ renumbering, re-narrating or re-cutting anything around it. To land it:
 
 1. add the measurement and its caveat to [script.md](script.md)'s numbers table;
 2. `SCENES.splice(4, 0, {num:5, …})` — the array order is the timeline order;
-3. update the counts in `index.html` (the header's "7 scenes · 5:20" and the footer note) and the
+3. update the counts in `index.html` (the header's "7 scenes · 5:30", the clock and the footer note) and the
    scene-5 note in this file.
 
 Nothing else needs to change: the chapter strip, the clock, the deep links and the
 `window.FCDemo` timeline are all derived from `SCENES`.
 
-## Rendering the MP4 (output B)
+## The narrated MP4 (output B)
 
-Not rendered yet. The page is built for it: the render hook is already in place and deterministic.
+**Rendered.** 1920×1080, 30 fps, **5:30**, synthesized narration, plus a captions-burned cut and a
+sidecar SRT. The MP4 is deliberately **not committed** — it belongs on YouTube and the licensing
+page, not in a git repository. [`render/`](render/) is the pipeline that produces it, and
+[`render/README.md`](render/README.md) is the five commands.
+
+The frames come from **this page**, opened with `?render=1`: the page furniture disappears, the
+stage goes full-bleed 16:9, and the grabber steps `FCDemo.seekGlobal(t)` 1/30 s at a time. So the
+video is not a second production — it is the same DOM, driven by a render timeline instead of by
+clicks, which is what §2 of the plan asks for.
 
 ```js
-window.FCDemo.total            // 320 seconds
+window.FCDemo.total            // 330 seconds
 window.FCDemo.scenes           // [{index, num, name, dur, offset}, …]
 window.FCDemo.seek(index, t)   // one scene, local time
 window.FCDemo.seekGlobal(gt)   // 0 … total, across scene boundaries
+window.FCDemo.setCaptions([…]) // burn-in captions: [{start, end, text}], global seconds
 ```
 
-`seekGlobal(gt)` mounts the right scene, sets the time and renders synchronously — so a frame
-grabber can step `1/30 s` at a time and get a deterministic frame every time, with no waiting on
-an animation clock.
+Two things worth knowing before you re-render:
 
-What is left, in order:
+- **The narration is fitted to the visuals, not the reverse.** `render/tts.mjs` measures the
+  synthesized audio and re-synthesizes a scene slightly faster if it overruns the duration
+  authored in `index.html`. A word count is not evidence; the audio is. The first pass of this
+  script overran every scene by ~40% and had to be cut back — if you edit
+  [script.md](script.md), run the pipeline's first three steps before believing it fits.
+- **Captions are drawn by the composition**, via `setCaptions()`, not burned by `ffmpeg` — the
+  usual Homebrew `ffmpeg` has no `libass`, and a caption band over a schematic covers the frame's
+  own content. Drawing them here keeps the page's fonts and palette and keeps them clear of the
+  counter panel.
 
-1. **Narration** — synthesize [script.md](script.md) per scene with the `hyperframes-media` TTS
-   flow (one voice, kept across this video and the follow-up), and keep the audio next to the
-   script. The reason narration is synthesized rather than recorded is maintenance: when 2.9
-   changes a number, or scene 5's measurement lands, a re-render is cheap and a studio day is not.
-2. **Composition** — wrap this page as a HyperFrames composition (`hyperframes-core` for the
-   contract, `hyperframes-cli` for `render`), driving `seekGlobal` from the timeline and laying the
-   per-scene narration on the matching offsets.
-3. **Captions** — burned in, from the same script.
-4. **Cuts** — a silent 1:1 / 9:16 export per scene for social; scene 6 (rate limiting against
-   crawler load) travels furthest and should go out first.
-
-Two cutaways are called for by the plan and are **not** in the page: ~2 s of the console realtime
-monitor in scene 3, and a dashboard in scene 8. Both need the redaction pass first — no site key,
-no hostnames, no client IPs, no internal origin names, no identifying page content. A cutaway is
-there to prove these states are observable, not to show whose traffic they are.
+Still outstanding for the video: the **two cutaways** the plan calls for — ~2 s of the console
+realtime monitor in scene 3, and a dashboard in scene 8. Both need the redaction pass first: no
+site key, no hostnames, no client IPs, no internal origin names, no identifying page content. A
+cutaway is there to prove these states are observable, not to show whose traffic they are. And the
+**social cuts** are per-scene extracts off the master (`render/README.md` has the one-liner);
+scene 6 travels furthest and should go out first.
 
 ## Review gates
 
