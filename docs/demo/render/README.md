@@ -24,6 +24,11 @@ the interactive page can never drift, because they are the same DOM.
 
 ## The five steps
 
+[`build.sh`](build.sh) runs all of them, in order, with the encodes at the end — `./build.sh`
+for the lot (~20 min cold), or `./build.sh <stage>…` for a subset, where a stage is one of
+`beats tts captions frames frames-cap encode`. It preflights the tools listed above and refuses
+to encode a frame directory with gaps in it. The steps individually:
+
 ```bash
 npm install
 node beats.mjs                 # script.md + index.html  → beats.json
