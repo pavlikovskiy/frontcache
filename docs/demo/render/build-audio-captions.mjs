@@ -75,8 +75,11 @@ const srt = plan.flatMap(p => cuesFor(p, 88)).map((c,i) =>
   (c.text.length > 46 ? c.text.replace(new RegExp(`^(.{1,46})\\s`), "$1\n") : c.text) + "\n").join("\n");
 writeFileSync("captions.srt", srt);
 
-// burned ASS: single line, pinned to the free strip at the very bottom
+// burned captions: single line, pinned to the free strip at the very bottom.
+// One cue list, two consumers - cues.json for the page (CUES=cues.json grab-frames.mjs,
+// which draws them itself) and captions.ass for a libass-enabled ffmpeg.
 const burn = plan.flatMap(p => cuesFor(p, MAX_BURN));
+writeFileSync("cues.json", JSON.stringify(burn, null, 2));
 const ass = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
@@ -93,5 +96,6 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 ${burn.map(c => `Dialogue: 0,${ts(c.start,".")},${ts(c.end,".")},fc,,0,0,0,,${c.text.replace(/\n/g," ")}`).join("\n")}
 `;
 writeFileSync("captions.ass", ass);
-console.log(`captions: ${srt.split("\n\n").length-1} sidecar cues · ${burn.length} burned cues`);
+console.log(`captions: ${srt.split("\n\n").length-1} sidecar cues · ${burn.length} burned cues` +
+            ` → captions.srt, cues.json, captions.ass`);
 console.log("longest burned line:", Math.max(...burn.map(c => c.text.length)), "chars");

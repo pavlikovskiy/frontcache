@@ -28,7 +28,7 @@ the interactive page can never drift, because they are the same DOM.
 npm install
 node beats.mjs                 # script.md + index.html  → beats.json
 node tts.mjs                   # beats.json              → audio/*.wav + plan.json
-node build-audio-captions.mjs  # plan.json               → narration.wav, captions.srt, captions.ass
+node build-audio-captions.mjs  # plan.json               → narration.wav, cues.json, captions.{srt,ass}
 node grab-frames.mjs ../index.html frames                        # 9,900 frames
 CUES=cues.json node grab-frames.mjs ../index.html frames-cap     # the captioned pass
 ```
@@ -48,13 +48,14 @@ Then encode (see `ffmpeg` lines below).
    (`adelay` + `amix`, then `loudnorm` to −16 LUFS), and derives caption cues *inside* each beat by
    character share of that beat's measured audio: the **text** comes from the script (so
    `fc:include`, `429` and `L1` stay correct) and the **timing** comes from the audio. Emits a
-   two-line `captions.srt` sidecar and a one-line `captions.ass`.
+   two-line `captions.srt` sidecar, plus one single-line cue list in two encodings for the two
+   burn-in routes: `cues.json` for the page (step 4) and `captions.ass` for `libass`.
 4. **`grab-frames.mjs`** — seek, screenshot, repeat, across 4 tabs on contiguous ranges (~16 fps,
    so ~10 min for 5:30). Resumable: existing frames are skipped, so a re-run after changing one
    scene only needs that scene's range deleted. `FROM` / `TO` (seconds), `FPS`, `W`, `H`,
-   `WORKERS` are env vars. With `CUES=cues.json` it calls `FCDemo.setCaptions()` and the captions
-   are rendered **by the page**, styled by the page's own stylesheet and positioned clear of the
-   counter panel.
+   `WORKERS` are env vars. With `CUES=cues.json` (written by step 3) it calls
+   `FCDemo.setCaptions()` and the captions are rendered **by the page**, styled by the page's own
+   stylesheet and positioned clear of the counter panel.
 5. **Encode.**
 
 ```bash
@@ -77,7 +78,9 @@ counter panel. `captions.ass` is kept for anyone with a `libass` build who wants
 
 ## Re-rendering after a change
 
-- **A wording change** → `beats.mjs`, `tts.mjs`, `build-audio-captions.mjs`, re-encode. No frames.
+- **A wording change** → `beats.mjs`, `tts.mjs`, `build-audio-captions.mjs`, re-encode. No
+  `frames/` — the visuals are a pure function of local time and the scene durations did not
+  move. `frames-cap/` *does* have to go: the new `cues.json` is baked into those frames.
 - **A visual change inside one scene** → delete that scene's frame range and re-run
   `grab-frames.mjs` (it resumes), then re-encode. Frame index = `global seconds × 30`.
 - **A scene duration change** → everything after it shifts; delete from that scene's first frame
