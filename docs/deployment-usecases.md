@@ -53,7 +53,7 @@ passing the request down the filter chain.
    front-cache.include-processor.impl.concurrent.timeout=5000
    front-cache.fallback-resolver.impl=org.frontcache.resilience.fr.FileBasedFallbackResolver
    front-cache.default-domain=myapp.com
-   front-cache.site-key=CHANGE_ME
+   front-cache.api-key=CHANGE_ME
    ```
 
    Provide the rest of the `conf/` files — `bots.conf`, `dynamic-urls.conf`, `fallbacks.conf`,
@@ -119,7 +119,7 @@ a configured origin.
    front-cache.include-processor.impl=org.frontcache.include.impl.ConcurrentIncludeProcessor
    front-cache.fallback-resolver.impl=org.frontcache.resilience.fr.FileBasedFallbackResolver
    front-cache.default-domain=www.example.com
-   front-cache.site-key=CHANGE_ME
+   front-cache.api-key=CHANGE_ME
    ```
 
    **One node serves one site.** Multi-domain configuration was retired in 2.6.0:
@@ -161,8 +161,8 @@ a configured origin.
 7. **Invalidate from app code** using `frontcache-agent` (minimal httpclient-only jar):
 
    ```java
-   FrontCacheAgent agent = new FrontCacheAgent("https://fc-host.example.com");
-   agent.removeFromCache(siteKey, "/store/product-details-42.*"); // regexp filter
+   FrontCacheAgent agent = new FrontCacheAgent("https://fc-host.example.com", apiKey);
+   agent.removeFromCache("/store/product-details-42.*"); // regexp filter
    ```
 
    Or call the IO API directly (see §4).
@@ -200,10 +200,10 @@ Two caching tiers:
    front-cache.host-name=edge-eu-1
    front-cache.origin-host=origin.example.com
    front-cache.origin-https-port=443
-   front-cache.site-key=SHARED_SITE_KEY   # same key across the cluster
+   front-cache.api-key=SHARED_API_KEY   # same key across the cluster
    ```
 
-   Keep `site-key` consistent across the cluster so cluster invalidation lines up everywhere.
+   Keep `api-key` consistent across the cluster so cluster invalidation lines up everywhere.
 
 3. **Put a GSLB in front of the edges.** Configure geo/latency routing + health checks
    against each edge's `:9080` (or a health URL). GSLB returns the nearest healthy edge IP.
@@ -218,14 +218,15 @@ Two caching tiers:
 
    ```java
    FrontCacheAgentCluster cluster = new FrontCacheAgentCluster(
-       "https://edge-us-1.example.com",
-       "https://edge-eu-1.example.com",
-       "https://edge-apac-1.example.com",
-       "https://origin.example.com");          // include the origin filter node
-   cluster.removeFromCache(siteKey, "/store/product/42.*");
+       List.of("https://edge-us-1.example.com",
+               "https://edge-eu-1.example.com",
+               "https://edge-apac-1.example.com",
+               "https://origin.example.com"),  // include the origin filter node
+       apiKey);
+   cluster.removeFromCache("/store/product/42.*");
    ```
 
-   This fans the `invalidate` action (with `x-frontcache-site-key`) to every node so a content
+   This fans the `invalidate` action (with the api key) to every node so a content
    change clears all tiers in all regions. Tag-based invalidation (`x-frontcache-component-tags`)
    lets one product update clear every fragment carrying that tag.
 

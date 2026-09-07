@@ -111,7 +111,7 @@ re-cutting anything around it. Plan §7.3.
 >
 > And the honest bit: invalidate with a filter of star, and you have emptied the whole node.
 
-- **On screen:** `agent.removeFromCache(siteKey, "/store/product-details-42.*")` beside `x-frontcache-component-tags: product-42`; three pages sharing one fragment; the cluster fan-out; the `filter=*` blast radius.
+- **On screen:** `agent.removeFromCache("/store/product-details-42.*")` beside `x-frontcache-component-tags: product-42`; three pages sharing one fragment; the cluster fan-out; the `filter=*` blast radius.
 - **Interactive:** the viewer picks URL vs tag and sees which tiles go red.
 - **Source:** [concept.md §9](../concept.md), [deployment-usecases.md §2.2 / §3.2](../deployment-usecases.md), [security.md](../security.md) (blast radius).
 

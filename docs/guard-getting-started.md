@@ -33,7 +33,7 @@ should only apply to one site says so in its condition (`host~^www\.example\.com
 Apply an edit without restarting:
 
 ```bash
-curl -H "x-frontcache-site-key: <your-site-key>" "http://<edge>/frontcache-io?action=reload-guard-rules"
+curl -H "Authorization: Bearer <your-api-key>" "http://<edge>/frontcache-io?action=reload-guard-rules"
 ```
 
 ## 2. The format
@@ -317,7 +317,7 @@ explains why a later one never fires.
 **Command line** — same data, per node:
 
 ```bash
-curl -H "x-frontcache-site-key: <your-site-key>" "http://<edge>/frontcache-io?action=get-guard-rules"
+curl -H "Authorization: Bearer <your-api-key>" "http://<edge>/frontcache-io?action=get-guard-rules"
 ```
 
 **Logs** — every guard action writes one line to
@@ -428,7 +428,7 @@ line is skipped and the rest of the file keeps working.
 comment every line) and reload:
 
 ```bash
-curl -H "x-frontcache-site-key: <your-site-key>" "http://<edge>/frontcache-io?action=reload-guard-rules"
+curl -H "Authorization: Bearer <your-api-key>" "http://<edge>/frontcache-io?action=reload-guard-rules"
 ```
 
 Every configured rule stops instantly; the two built-ins stay. Use
@@ -460,7 +460,7 @@ re-reads live:
 | `front-cache.guard-rules.rate-limit.slots` | `262144` | counter slots per bucket, 8 bytes each — 2 MB. Undersizing costs accuracy, never a wrongly refused visitor |
 | `front-cache.guard-rules.rate-limit.max-total-slots` | `4194304` | ceiling across all buckets; a rule that would exceed it is skipped with an error |
 
-Management actions (both need the `x-frontcache-site-key` header when a site key is
+Management actions (both need the `Authorization: Bearer <api-key>` header when an api key is
 configured):
 
 | Action | Purpose |
