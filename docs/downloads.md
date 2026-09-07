@@ -3,7 +3,8 @@
 Direct links to every published artifact for the two current releases, **2.8.0** (current) and
 **2.7.0** (previous). Everything here is **public read** — no account, no token, no login. This
 page is the link list; [install-guide.md](install-guide.md) is how you actually install each of
-them.
+them, and [release-notes/](release-notes/) is what changed between them — read the note for the
+version you are moving to before you move to it.
 
 Everything Java lives under `https://repo.eternita.co/maven2/org/frontcache/`, the images live on
 Docker Hub, and **every file below has a companion checksum** — append `.sha256` to any link on

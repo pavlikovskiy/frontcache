@@ -57,7 +57,8 @@ passing the request down the filter chain.
    ```
 
    Provide the rest of the `conf/` files — `bots.conf`, `dynamic-urls.conf`, `fallbacks.conf`,
-   `fc-l1-ehcache-config.xml`, `resilience.properties`, `fc-logback.xml`; what each one does is in
+   `guard-rules.conf`, `fc-l1-ehcache-config.xml`, `resilience.properties`, `fc-logback.xml`; what
+   each one does is in
    [concept §7](concept.md#7-configuration-lives-in-frontcache_home).
 
 4. **Pass JVM system properties** when launching the container:
@@ -88,8 +89,8 @@ Hit a `/example/*` URL twice; second response should carry Frontcache trace head
 ## 2. Use case #2 — Frontcache standalone, in front of an any-language web app
 
 **When to use:** your app is PHP/Python/Node/Ruby/etc., or you want cache isolated on its own
-host/tier. Frontcache runs as a reverse proxy (`FrontCacheServlet`) and forwards misses to a
-configured origin.
+host/tier. Frontcache runs as a reverse proxy (FrontCache, standalone mode) and forwards misses to
+a configured origin.
 
 ### 2.1 Topology
 
@@ -127,7 +128,7 @@ configured origin.
    To front several sites, run a node per site.
 
 3. **Configure behavior in `conf/`** — `bots.conf`, `dynamic-urls.conf`, `fallbacks.conf`,
-   `fc-l1-ehcache-config.xml`, `resilience.properties`; each file's job is in
+   `guard-rules.conf`, `fc-l1-ehcache-config.xml`, `resilience.properties`; each file's job is in
    [concept §7](concept.md#7-configuration-lives-in-frontcache_home). For a proxy tier
    the two that matter most on day one are `dynamic-urls.conf` (keep carts/login/admin
    uncached) and `fallbacks.conf` (what users see when the origin is down).
@@ -160,7 +161,7 @@ configured origin.
 7. **Invalidate from app code** using `frontcache-agent` (minimal httpclient-only jar):
 
    ```java
-   FrontCacheAgent agent = new FrontCacheAgent("http://fc-host:9080");
+   FrontCacheAgent agent = new FrontCacheAgent("https://fc-host.example.com");
    agent.removeFromCache(siteKey, "/store/product-details-42.*"); // regexp filter
    ```
 
@@ -217,10 +218,10 @@ Two caching tiers:
 
    ```java
    FrontCacheAgentCluster cluster = new FrontCacheAgentCluster(
-       "http://edge-us-1:9080",
-       "http://edge-eu-1:9080",
-       "http://edge-apac-1:9080",
-       "http://origin:9080");          // include the origin filter node
+       "https://edge-us-1.example.com",
+       "https://edge-eu-1.example.com",
+       "https://edge-apac-1.example.com",
+       "https://origin.example.com");          // include the origin filter node
    cluster.removeFromCache(siteKey, "/store/product/42.*");
    ```
 
