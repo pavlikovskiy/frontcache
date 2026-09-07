@@ -143,7 +143,7 @@ Two things worth knowing before you re-render:
 
 Still outstanding for the video: the **two cutaways** the plan calls for — ~2 s of the console
 realtime monitor in scene 3, and a dashboard in scene 8. Both need the redaction pass first: no
-site key, no hostnames, no client IPs, no internal origin names, no identifying page content. A
+api key, no hostnames, no client IPs, no internal origin names, no identifying page content. A
 cutaway is there to prove these states are observable, not to show whose traffic they are. And the
 **social cuts** are per-scene extracts off the master (`render/README.md` has the one-liner);
 scene 6 travels furthest and should go out first.

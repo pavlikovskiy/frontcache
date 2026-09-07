@@ -131,7 +131,7 @@ Not in the application's own config. The directory is located via `-Dfrontcache.
 
 | `conf/` file | Owns |
 |---|---|
-| `frontcache.properties` | subsystem impls, origin host/ports, domains, site key, ports |
+| `frontcache.properties` | subsystem impls, origin host/ports, domains, api key, ports |
 | `bots.conf` | UA keywords treated as bots (per domain) → `client="bot"` / `bot:` TTL splits |
 | `dynamic-urls.conf` | regex of never-cache URLs (carts, login, admin) → routed via `FC_BypassCache` |
 | `fallbacks.conf` | `URI_PATTERN \| fallback_file \| optional_origin_request`; served when the origin 5XXs or the circuit is open. Files seed at startup |
@@ -170,8 +170,8 @@ fragment was stored with — so one product update can clear every fragment carr
 `product-42`, across every page that includes it.
 
 It is requested through the management API at **`/frontcache-io`**
-(`FrontCacheIOServlet`, `action=<name>`), guarded by the `x-frontcache-site-key` header and
-restricted to `front-cache.management.port`. Java callers can use `frontcache-agent`
+(`FrontCacheIOServlet`, `action=<name>`), guarded by the api key
+(`Authorization: Bearer <api-key>`). Java callers can use `frontcache-agent`
 (`FrontCacheAgent`, and `FrontCacheAgentCluster` to fan an invalidation across a multi-region
 cluster); everyone else uses plain HTTP. The full action table is in
 [deployment-usecases.md](deployment-usecases.md) §4.
