@@ -103,9 +103,9 @@ indices, sincedb and pulled files consistent.
 
 ### Frontcache Overview
 
-- **KPI tiles** — all client requests and total guarded & failed requests (the guard's share of
-  inbound traffic, ~29% here); then toplevel, include and include-async request counts, origin
-  hits (`is_cached:dynamic`) and total error count. The three request-type counts partition the
+- **KPI tiles** — all client requests and total guarded requests (the guard's share of inbound
+  traffic, ~29% here); then toplevel, include and include-async event counts, origin hits
+  (`is_cached:dynamic`) and total error count. The three request-type counts partition the
   request index, so they sum to its total; the first tile is the sum of the second and third.
 - **Over time** — request volume by cache status (stacked), cache-hit ratio
   (percentage-stacked), latency percentiles (p50/p90/p95/p99), bandwidth served.
@@ -154,7 +154,7 @@ rejected (400 / 414), redirected (301 / 302), or matched in dry-run — plus req
 completed through a circuit-breaker fallback. **`reject_reason` is the headline dimension: it holds the
 rule name**, so a new rule appears in every panel without touching the dashboard.
 
-- **KPI tiles** — total guarded & failed requests, distinct client IPs, guard-action share
+- **KPI tiles** — total guarded requests, distinct client IPs, guard-action share
   (rule acted vs circuit-breaker fallback), bot share.
 - **Over time** — guard actions & failures by rule (stacked area) and by FC node.
 - **Breakdowns** — rule/reason pie and bar (top 10), guard-actions-vs-fallback pie,
