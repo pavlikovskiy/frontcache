@@ -103,14 +103,26 @@ indices, sincedb and pulled files consistent.
 
 ### Frontcache Overview
 
-- **KPI tiles** — total requests, cache-hit ratio (toplevel), median & p95 latency, error rate,
-  bot share.
+- **KPI tiles** — toplevel, include and include-async request counts, origin hits
+  (`is_cached:dynamic`), p95 latency for toplevels and for includes, and total error count. The
+  three request-type counts partition the index, so they sum to the total.
 - **Over time** — request volume by cache status (stacked), cache-hit ratio
   (percentage-stacked), latency percentiles (p50/p90/p95/p99), bandwidth served.
-- **Breakdowns** — median latency cache-vs-origin and bot-vs-browser; requests by FC node, by
-  domain, and by country; cache-status / cacheable / client-type pies.
+- **Breakdowns** — median latency cache-vs-origin; a toplevel-vs-include split and a cache
+  hit-vs-miss split for toplevels and for includes separately (the two behave nothing alike —
+  includes run ~99% from cache, toplevels far less); toplevel requests by FC node and requests by
+  country. The by-node bar counts **toplevels only**, so it reads as pages served per node rather
+  than being dominated by each page's includes.
 - **Top-N tables** — 20 slowest URLs (by median latency) and 20 hottest URLs (with a cache-hits
   column).
+
+The data view backing this dashboard is
+`frontcache-*,-frontcache-errors-*,-frontcache-fallbacks-*,-frontcache-rejected-*`: the bare
+`frontcache-*` also matches the three sibling indices, and rejected-request documents carry the
+same `hystrix_error` field, which would inflate every unfiltered panel here. Upgrading from an
+older copy of this dashboard leaves eleven now-unused `lens` saved objects behind — import only ever
+adds and overwrites. They are harmless; delete them from **Stack Management → Saved Objects** if
+you want a clean list.
 
 ### Frontcache Errors
 
