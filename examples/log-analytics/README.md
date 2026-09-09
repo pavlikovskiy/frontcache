@@ -103,9 +103,10 @@ indices, sincedb and pulled files consistent.
 
 ### Frontcache Overview
 
-- **KPI tiles** — toplevel, include and include-async request counts, origin hits
-  (`is_cached:dynamic`), p95 latency for toplevels and for includes, and total error count. The
-  three request-type counts partition the index, so they sum to the total.
+- **KPI tiles** — all client requests and total guarded & failed requests (the guard's share of
+  inbound traffic, ~29% here); then toplevel, include and include-async request counts, origin
+  hits (`is_cached:dynamic`) and total error count. The three request-type counts partition the
+  request index, so they sum to its total; the first tile is the sum of the second and third.
 - **Over time** — request volume by cache status (stacked), cache-hit ratio
   (percentage-stacked), latency percentiles (p50/p90/p95/p99), bandwidth served.
 - **Breakdowns** — median latency cache-vs-origin; a toplevel-vs-include split and a cache
@@ -119,10 +120,15 @@ indices, sincedb and pulled files consistent.
 The data view backing this dashboard is
 `frontcache-*,-frontcache-errors-*,-frontcache-fallbacks-*,-frontcache-rejected-*`: the bare
 `frontcache-*` also matches the three sibling indices, and rejected-request documents carry the
-same `hystrix_error` field, which would inflate every unfiltered panel here. Upgrading from an
-older copy of this dashboard leaves eleven now-unused `lens` saved objects behind — import only ever
-adds and overwrites. They are harmless; delete them from **Stack Management → Saved Objects** if
-you want a clean list.
+same `hystrix_error` field, which would inflate every unfiltered panel here. The two leftmost KPI
+tiles are the exception — a guard rule acts *before* cache or origin, so a rejected request never
+gets a request-log line and has to be counted from the rejected index. They use a second data
+view, `frontcache-*,-frontcache-errors-*,-frontcache-fallbacks-*`, and tell the two populations
+apart by `reject_reason`, which only rejected documents carry.
+
+Upgrading from an older copy of this dashboard leaves eleven now-unused `lens` saved objects
+behind — import only ever adds and overwrites. They are harmless; delete them from
+**Stack Management → Saved Objects** if you want a clean list.
 
 ### Frontcache Errors
 
