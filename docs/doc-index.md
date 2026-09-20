@@ -17,6 +17,7 @@
 | **...from a Java app** | [JSP tags](jsp-tags.md) — `fc:component` and `fc:include`, the tag form of those headers                            |
 | **...for a grid or a list** | [Include combining](include-combining.md) — batch the fragments one page is missing into a single origin call |
 | **Protect a node** | [Guard rules](guard-getting-started.md) — reject junk traffic and rate-limit one loud client before either costs anything |
+| **Stop one loud client** | [Rate limiting how-to](rate-limit-howto.md) — per-IP `rate:` rules step by step, with the behaviour of each scenario spelled out |
 | **Survive a bad origin** | [Resilience command flow](resilience-command-flow.md) — how every origin call is circuit-broken, and what serves a fallback |
 | **Lock it down** | [Security](security.md) — the api key, what replaced the management port, and the blast radius                  |
 | **Put it behind nginx** | [Front door](../examples/front-door) — nginx on 80/443 in front of Frontcache, as containers or on a VM                 |
