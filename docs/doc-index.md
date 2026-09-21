@@ -22,4 +22,5 @@
 | **Lock it down** | [Security](security.md) — the api key, what replaced the management port, and the blast radius                  |
 | **Put it behind nginx** | [Front door](../examples/front-door) — nginx on 80/443 in front of Frontcache, as containers or on a VM                 |
 | **Watch it** | [Console and dashboards](console-dashboards.md) — the console UI, and getting metrics into Prometheus / Grafana / OTLP  |
+| **Find the network behind it** | [search-cidr how-to](search-cidr-howto.md) — aggregate a request log into CIDR blocks, then feed them to `bots.conf` / `guard-rules.conf` |
 | **See what it is doing** | [Log analytics](../examples/log-analytics) — pull the logs into Elasticsearch + Kibana, with four ready-made dashboards |
