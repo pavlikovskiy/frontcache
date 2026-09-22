@@ -5,10 +5,15 @@
 #
 # Log format (org.frontcache.reqlog.RequestLogger):
 #   ts req-id domain method success|error req-type cacheable|direct dynamic|from-cache|... \
-#   runtime-ms length-bytes "url" "client-ip" fc-id bot|browser "bot-reason" "user-agent"
+#   runtime-ms length-bytes "url" "client-ip" fc-id bot|guest "client-type-rule" "user-agent"
 #
 # The client-ip column is the X-Forwarded-For chain ("real-client, cf-edge, ..."),
 # so only the FIRST address in it is the actual client.
+#
+# client-type-rule is the conf/bots.conf rule that decided bot|guest. Frontcache 2.10.0
+# INSERTED it before the user agent, so a log that spans the upgrade holds both shapes and
+# the user-agent column is located per line. A frontcache-failed-requests log works here too:
+# it has one more quoted column (the guard rule / fallback reason), detected by its filename.
 #
 # The regex is an ERE matched against the whole raw log line (like grep -E).
 # Omit it to aggregate every line.
@@ -37,7 +42,9 @@ V4BITS=24
 V6BITS=64
 NOCASE=0
 
-usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+# '2,/^$/p' = the header comment block, however long it grows - a hard-coded last line
+# silently truncates the usage text the next time a paragraph is added above.
+usage() { sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while getopts ":n:m:M:ih" opt; do
   case "$opt" in
@@ -63,6 +70,13 @@ case "$V6BITS" in ''|*[!0-9]*) echo "-M needs a number" >&2; exit 1 ;; esac
 
 [ -r "$LOG" ] || { echo "cannot read log: $LOG" >&2; exit 1; }
 
+# A frontcache-failed-requests log carries one quoted column more than the request log (the
+# guard rule / fallback reason), which shifts the baseline the user-agent column is found by.
+case "$LOG" in
+  *failed-requests*) ISFAILED=1 ;;
+  *)                 ISFAILED=0 ;;
+esac
+
 case "$LOG" in
   *.gz)  READER=(gzip -cd) ;;
   *.bz2) READER=(bzip2 -cd) ;;
@@ -77,7 +91,8 @@ echo
 
 export FC_RE
 
-"${READER[@]}" "$LOG" | awk -v top="$TOP" -v v4bits="$V4BITS" -v v6bits="$V6BITS" -v nocase="$NOCASE" '
+"${READER[@]}" "$LOG" | awk -v top="$TOP" -v v4bits="$V4BITS" -v v6bits="$V6BITS" -v nocase="$NOCASE" \
+                             -v isfailed="$ISFAILED" '
 function human(b,   u, i) {
   split("B KB MB GB TB PB", u, " ")
   i = 1
@@ -159,6 +174,10 @@ function v6prefix(ip, bits,   head, tail, hn, tn, g, i, j, bleft, out, sep,
 BEGIN {
   re = ENVIRON["FC_RE"]
   if (nocase) re = tolower(re)
+  # quoted fields on a PRE-2.10.0 line of this file: "url" "client-ip" "user-agent", plus
+  # "reason" in a failed-requests log. One more than this means the line also carries the
+  # 2.10.0 client-type-rule column, which pushed the user agent from q[6] to q[8].
+  baseQuoted = (isfailed + 0) ? 4 : 3
 }
 {
   if (re != "") {
@@ -167,8 +186,17 @@ BEGIN {
   }
   matched++
 
-  # quoted columns: q[2]=url, q[4]=client-ip chain, q[6]=bot-reason, q[8]=user-agent
-  if (split($0, q, "\"") < 5) { malformed++; next }
+  # quoted columns: q[2]=url, q[4]=client-ip chain, then a tail that depends on the node
+  # version and on which log this is:
+  #   request log, pre-2.10.0:  q[6]=user-agent
+  #   request log, 2.10.0+:     q[6]=client-type-rule  q[8]=user-agent
+  #   failed log,  pre-2.10.0:  q[6]=user-agent        q[8]=reason
+  #   failed log,  2.10.0+:     q[6]=client-type-rule  q[8]=user-agent  q[10]=reason
+  # Decided per line, not per file: a rolled log spans the upgrade. Only the client IP is
+  # needed for the aggregation itself, and it is q[4] in every shape.
+  n = split($0, q, "\"")
+  if (n < 5) { malformed++; next }
+  agentIdx = (int((n - 1) / 2) > baseQuoted) ? 8 : 6
 
   ip = q[4]
   if ((c = index(ip, ",")) > 0) ip = substr(ip, 1, c - 1)   # real client, drop CDN hops
@@ -186,7 +214,7 @@ BEGIN {
   req[net]++
   vol[net] += bytes
   if (!((net SUBSEP ip) in seen)) { seen[net, ip] = 1; hosts[net]++ }
-  if (!(net in ua) && q[8] != "") ua[net] = q[8]
+  if (!(net in ua) && q[agentIdx] != "") ua[net] = q[agentIdx]
 
   totalReq++
   totalVol += bytes
