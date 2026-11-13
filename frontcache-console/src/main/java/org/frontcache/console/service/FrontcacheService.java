@@ -82,6 +82,12 @@ public class FrontcacheService {
 	private String apiKey = "default-api-key";
 
 	/**
+	 * The {@code edges} entries, as of 2.13.0: edges called with their OWN API key rather than {@link #apiKey}, in
+	 * config order, after {@code urls}. Fixed at start - the Edges screen neither adds nor removes them.
+	 */
+	private volatile List<EdgeScope.Edge> keyedEdges = List.of();
+
+	/**
 	 * The console's single login, from conf/frontcache-console.conf. Both null = authentication is
 	 * off, which is what a config file written before this feature existed produces - see
 	 * {@link #readCredentials}.
@@ -161,11 +167,107 @@ public class FrontcacheService {
 			logger.info(" -- Loading apiKey from console config");
 		}
 
+		keyedEdges = parseKeyedEdges(fcConsoleConfig, frontcacheAgentURLs);
+		for (EdgeScope.Edge edge : keyedEdges)
+			logger.info(" -- Loading edge {} with its own apiKey from console config", edge.url());
+
 		readCredentials();
 
 		// a key only a console plugin reads, set on a console without that plugin, warns rather than
 		// being silently ignored
 		ConsolePlugins.warnUnclaimedKeys(fcConsoleConfig);
+	}
+
+	/** HOCON key under frontcache.console: edges with their own API key. */
+	static final String EDGES_KEY = "edges";
+
+	/** What an {@code edges} entry may say. */
+	private static final Set<String> EDGE_ENTRY_KEYS = Set.of("url", "apiKey", "label");
+
+	/**
+	 * Reads {@code edges} (2.13.0): a list of {@code { url = "...", apiKey = "...", label = "..." }}, each edge called
+	 * with its own key - a console watching nodes of two key domains (an edge tier and an origin's filter, say) sends
+	 * neither key to the other's nodes.
+	 *
+	 * <b>Read whole or refused whole</b>, as the console's other blocks are: an entry without {@code url} or
+	 * {@code apiKey}, an unknown key (a misspelt {@code apiKey} would otherwise send no key at all), and one canonical
+	 * URL twice - in {@code edges}, or in {@code urls} and {@code edges} - refuse to start. The last is not pedantry: one
+	 * URL with two keys is refused by {@link EdgeScope#of} on every request, and which key it got must never depend on
+	 * order. No message quotes a key.
+	 *
+	 * @param urls the {@code urls} already read
+	 * @return the entries in config order; empty without the key
+	 */
+	static List<EdgeScope.Edge> parseKeyedEdges(Config config, Collection<String> urls) {
+
+		if (null == config || !config.hasPath(EDGES_KEY))
+			return List.of();
+
+		List<? extends ConfigObject> entries;
+		try {
+			entries = config.getObjectList(EDGES_KEY);
+		} catch (RuntimeException e) {
+			throw new IllegalStateException("frontcache-console.conf: edges must be a list of"
+					+ " { url = \"...\", apiKey = \"...\" }");
+		}
+
+		Set<String> claimed = new LinkedHashSet<String>();
+		for (String url : urls)
+			claimed.add(canonicalEdgeURL(url));
+
+		List<String> errors = new ArrayList<String>();
+		List<EdgeScope.Edge> edges = new ArrayList<EdgeScope.Edge>();
+		Set<String> seen = new LinkedHashSet<String>();
+		for (int i = 0; i < entries.size(); i++)
+		{
+			ConfigObject object = entries.get(i);
+			String where = "edges[" + i + "]";
+			for (String key : object.keySet())
+				if (!EDGE_ENTRY_KEYS.contains(key))
+					errors.add(where + ": unknown key '" + key + "' (an entry has url, apiKey and label)");
+
+			Config entry = object.toConfig();
+			String url = string(entry, "url", where, errors);
+			String key = string(entry, "apiKey", where, errors);
+			String label = entry.hasPath("label") ? string(entry, "label", where, errors) : null;
+			if (null == url || null == key)
+				continue;
+
+			String canonical = canonicalEdgeURL(url);
+			if (claimed.contains(canonical))
+				errors.add(where + ": " + canonical + " is in urls too - an edge is called with one key");
+			else if (!seen.add(canonical))
+				errors.add(where + ": " + canonical + " is in edges twice");
+			else
+				edges.add(new EdgeScope.Edge(url.trim(), key, label));
+		}
+
+		if (!errors.isEmpty())
+			throw new IllegalStateException("frontcache-console.conf: " + String.join("; ", errors));
+
+		return List.copyOf(edges);
+	}
+
+	/** A required, non-blank string of an {@code edges} entry; null with the error recorded - never its value. */
+	private static String string(Config entry, String key, String where, List<String> errors) {
+
+		if (!entry.hasPath(key))
+		{
+			errors.add(where + ": " + key + " is missing");
+			return null;
+		}
+		try {
+			String value = entry.getString(key);
+			if (value.isBlank())
+			{
+				errors.add(where + ": " + key + " is empty");
+				return null;
+			}
+			return value;
+		} catch (RuntimeException e) {
+			errors.add(where + ": " + key + " must be a string");
+			return null;
+		}
 	}
 
 	/**
@@ -312,6 +414,27 @@ public class FrontcacheService {
 		return apiKey;
 	}
 
+	/** The {@code edges} entries, each with its own key - for {@link ConfiguredEdgeScope} only. */
+	List<EdgeScope.Edge> configuredKeyedEdges() {
+		return keyedEdges;
+	}
+
+	/**
+	 * The {@code edges} entries, as configured URL -> label ("" for none), in config order: what the Edges screen
+	 * shows read-only. No key.
+	 */
+	public Map<String, String> keyedEdgeLabels() {
+		Map<String, String> labels = new LinkedHashMap<String, String>();
+		for (EdgeScope.Edge edge : keyedEdges)
+			labels.put(edge.url(), null == edge.label() ? "" : edge.label());
+		return labels;
+	}
+
+	/**
+	 * Whether {@code frontcacheURL} answers {@code get-cache-state} with the console-wide key - for the one caller that
+	 * probes a URL no config names, {@code IndexController}'s local edge, and only while edge editing is on. Never for
+	 * an edge of a scope: that edge has its own key.
+	 */
 	public boolean isFrontCacheEdgeAvailable(String frontcacheURL)
 	{
 		boolean available = false;
@@ -816,8 +939,20 @@ public class FrontcacheService {
 
 	/** Nothing when {@link #isEdgeEditingEnabled()} is off - the controller says so, this keeps it so. */
 	public void addEdge(String edge) {
-		if (null != edge && isEdgeEditingEnabled())
+		if (null != edge && isEdgeEditingEnabled() && !isKeyedEdge(edge))
 			frontcacheAgentURLs.add(edge);
+	}
+
+	/**
+	 * Whether an {@code edges} entry has this canonical URL. The Edges screen never adds one to {@code urls}: the
+	 * same URL with the console-wide key and with its own is refused by {@link EdgeScope#of}, on every request.
+	 */
+	boolean isKeyedEdge(String edge) {
+		String canonical = canonicalEdgeURL(edge);
+		for (EdgeScope.Edge keyed : configuredKeyedEdges())
+			if (canonicalEdgeURL(keyed.url()).equals(canonical))
+				return true;
+		return false;
 	}
 
 	public void removeEdge(String edge) {
