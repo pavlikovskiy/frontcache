@@ -431,12 +431,12 @@ public class EdgeKeyIsolationTest {
 
 		for (Stub stub : List.of(fleet, origin))
 		{
-			MockHttpServletRequest request = streamRequest(stub.url() + "hystrix.stream");
+			MockHttpServletRequest request = streamRequest(stub.url() + "fc-dashboard.stream");
 			streams.service(request, new MockHttpServletResponse());
 			assertTrue("relayed: " + stub.url(), request.isAsyncStarted());
 		}
 		MockHttpServletResponse unknown = new MockHttpServletResponse();
-		streams.service(streamRequest(nowhere.url() + "hystrix.stream"), unknown);
+		streams.service(streamRequest(nowhere.url() + "fc-dashboard.stream"), unknown);
 		assertEquals(403, unknown.getStatus());
 
 		long deadline = System.currentTimeMillis() + 5000;
