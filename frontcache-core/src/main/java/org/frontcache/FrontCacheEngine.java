@@ -88,8 +88,8 @@ import org.frontcache.include.IncludeProcessor;
 import org.frontcache.include.IncludeProcessorManager;
 import org.frontcache.metrics.FcMetricsExport;
 import org.frontcache.reqlog.RequestLogger;
-import org.frontcache.module.CoreModuleContext;
-import org.frontcache.module.FrontcacheModules;
+import org.frontcache.plugin.host.CoreEvents;
+import org.frontcache.plugin.host.FrontcachePlugins;
 import org.frontcache.warmer.WarmRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -683,11 +683,11 @@ public class FrontCacheEngine {
 		});
 		t.start();
 
-		// Modules from their own jars (the Pro module: licensing, the warmer's orchestration), found
-		// through FrontcacheModule's ServiceLoader. After the cache and before metrics export, so a
-		// module's meters bind to a started module. Never on the request path, and a module that throws is
-		// dropped rather than stopping the node.
-		FrontcacheModules.start(new CoreModuleContext(getPublicDomain()));
+		// Plugins from their own jars (the Pro plugin: licensing, the warmer's orchestration), found by their
+		// META-INF/frontcache-plugin.properties. After the cache and before metrics export, so a plugin's meters
+		// bind to a started plugin. A plugin that throws is dropped rather than stopping the node. The guard
+		// rules are handed over for the guard summary an observing plugin may subscribe to.
+		FrontcachePlugins.start(getPublicDomain(), () -> guardRuleEngine.getRules());
 
 		// Prometheus / OTLP export. A no-op unless front-cache.metrics.export says otherwise, which is
 		// why this is called unconditionally: the node's lifecycle owner is the right place to start a
@@ -835,7 +835,7 @@ public class FrontCacheEngine {
 	 */
 	private void stop(boolean shutdown) {
 
-		FrontcacheModules.stop(shutdown);
+		FrontcachePlugins.stop(shutdown);
 
 		// FCConfig is deliberately NOT torn down here. It used to be (FCConfig.destroy() nulled the
 		// properties and emptied dynamic-urls.conf), but FCConfig is initialized by its static
@@ -1128,7 +1128,10 @@ public class FrontCacheEngine {
 
 		// dry-run rules only observe: they are logged, then the request carries on
 		for (GuardRule dryRunRule : guardOutcome.getDryRunMatches())
+		{
 			logGuardAction(context, dryRunRule.getName() + ":dry-run", 0, GuardAction.DISPOSITION_DRY_RUN);
+			CoreEvents.guardMatched(context, dryRunRule.getName(), GuardAction.DISPOSITION_DRY_RUN, 0);
+		}
 
 		if (guardOutcome.isTerminal())
 		{
@@ -1181,6 +1184,8 @@ public class FrontCacheEngine {
 		}
 
 		logGuardAction(context, guardReason(context, rule), status, action.getDisposition());
+		// after the response is written: an observing plugin learns of it, it never takes part in it
+		CoreEvents.guardMatched(context, rule.getName(), action.getDisposition(), status);
 		return;
 	}
 

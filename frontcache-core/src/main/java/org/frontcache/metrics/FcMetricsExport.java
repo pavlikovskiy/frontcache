@@ -35,7 +35,7 @@ import org.frontcache.guard.ratelimit.WindowLimiter;
 import org.frontcache.resilience.FcCommandMetrics;
 import org.frontcache.resilience.FcEventType;
 import org.frontcache.resilience.FcThreadPools;
-import org.frontcache.module.FrontcacheModules;
+import org.frontcache.plugin.host.FrontcachePlugins;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -212,9 +212,11 @@ public class FcMetricsExport {
 		bindGuardMetrics();
 		bindJvmMetrics();
 
-		// what a module (the Pro jar's license and warmer series) adds - after the core's own, so a
-		// module can never be what a core series' name or description is decided by
-		FrontcacheModules.bindMeters(registry);
+		bindPluginMetrics();
+
+		// what a plugin (the Pro jar's license and warmer series) adds - after the core's own, so a
+		// plugin can never be what a core series' name or description is decided by
+		FrontcachePlugins.bindMeters(registry);
 	}
 
 	/**
@@ -527,6 +529,42 @@ public class FcMetricsExport {
 	 * {@code CacheManager.existingInstance()}. The reset that a reload causes is real and is reported as
 	 * one: these are counters, and Prometheus already understands a counter going backwards as a reset.
 	 */
+	/**
+	 * Per plugin: its state, its errors and the events its listeners dropped - {@code frontcache_plugin_*}. Plugins
+	 * are found once per process, so the set is fixed by the time this runs; each meter reads the plugin's stats at
+	 * scrape time. A node without plugins exports none of these series.
+	 */
+	private void bindPluginMetrics()
+	{
+		for (String id : FrontcachePlugins.loadedIds())
+		{
+			Tags tags = Tags.of("plugin", id);
+			Gauge.builder("plugin.state", id, p -> pluginStarted(p))
+					.description("1 while the plugin is started, 0 when it failed, was refused or is stopped")
+					.tags(tags)
+					.register(registry);
+			FunctionCounter.builder("plugin.errors", id, p -> pluginStat(p, org.frontcache.io.PluginStats::getErrors))
+					.description("Exceptions a plugin threw into the node - start, stop, its listeners, its contributions")
+					.tags(tags)
+					.register(registry);
+			FunctionCounter.builder("plugin.events.dropped", id,
+					p -> pluginStat(p, org.frontcache.io.PluginStats::getEventsDropped))
+					.description("Events a plugin's listeners did not receive because their queue was full")
+					.tags(tags)
+					.register(registry);
+		}
+	}
+
+	private static double pluginStarted(String id) {
+		org.frontcache.io.PluginStats stats = FrontcachePlugins.stats(id);
+		return (null != stats && "started".equals(stats.getState())) ? 1 : 0;
+	}
+
+	private static double pluginStat(String id, java.util.function.ToLongFunction<org.frontcache.io.PluginStats> stat) {
+		org.frontcache.io.PluginStats stats = FrontcachePlugins.stats(id);
+		return (null == stats) ? 0 : stat.applyAsLong(stats);
+	}
+
 	private synchronized void bindGuardMetrics()
 	{
 		// existingInstance(), not getFrontCache(): a scrape must not be what starts the node. Early in

@@ -51,9 +51,9 @@ import org.frontcache.core.ApiKey;
 import org.frontcache.core.WebResponse;
 import org.frontcache.guard.GuardRule;
 import org.frontcache.guard.GuardRuleEntry;
-import org.frontcache.module.FrontcacheModules;
-import org.frontcache.module.ManagementAction;
-import org.frontcache.module.ManagementRequest;
+import org.frontcache.plugin.ManagementAction;
+import org.frontcache.plugin.ManagementRequest;
+import org.frontcache.plugin.host.FrontcachePlugins;
 import org.frontcache.resilience.FcResilienceReload;
 import org.frontcache.resilience.fr.FallbackConfigEntry;
 import org.frontcache.resilience.fr.FallbackResolverFactory;
@@ -241,11 +241,11 @@ public class FrontCacheIOServlet extends HttpServlet {
 			break;
 
 		default:
-			// A module's action (the Pro jar's license and warmer actions) - consulted only after every
-			// name the core owns, so a module can never shadow one. No module answering it means the
+			// A plugin's action (the Pro jar's license and warmer actions) - consulted only after every
+			// name the core owns, so a plugin can never shadow one. No plugin answering it means the
 			// ping below: the "unknown action" contract, which a console already reads as "this node
 			// does not have it".
-			ManagementAction moduleAction = FrontcacheModules.managementAction(action);
+			ManagementAction moduleAction = FrontcachePlugins.managementAction(action);
 			if (null != moduleAction)
 			{
 				aResponse = moduleAction.handle(new ServletManagementRequest(action, request, response));
@@ -320,7 +320,8 @@ public class FrontCacheIOServlet extends HttpServlet {
 		CacheStats cacheStats = (null == processor) ? CacheStats.NOT_TRACKED : processor.getCacheStats();
 
 		NodeStatsActionResponse stats = new NodeStatsActionResponse(cacheStats, FcNodeStats.current());
-		stats.setModules(FrontcacheModules.ids());
+		stats.setModules(FrontcachePlugins.ids());
+		stats.setPlugins(FrontcachePlugins.stats());
 		return stats;
 	}
 
@@ -895,7 +896,7 @@ public class FrontCacheIOServlet extends HttpServlet {
 	/** The core's actions and every started module's, for {@code help}. */
 	private static Map<String, String> helpDescriptions()
 	{
-		Map<String, String> descriptions = new java.util.TreeMap<>(FrontcacheModules.managementActionDescriptions());
+		Map<String, String> descriptions = new java.util.TreeMap<>(FrontcachePlugins.managementActionDescriptions());
 		descriptions.putAll(FrontcacheAction.actionsDescriptionMap); // the core's description wins a clash
 		return descriptions;
 	}

@@ -1,0 +1,94 @@
+/*
+ * Copyright 2018 Eternita
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.frontcache.plugin;
+
+import java.util.List;
+import java.util.Map;
+
+import org.frontcache.plugin.event.EventListener;
+
+/**
+ * A plugin: code from its own jar that plugs into a node. Its jar carries
+ * {@value PluginManifest#RESOURCE}, which names this class ({@code class = ...}) and declares what the plugin is
+ * ({@link PluginManifest}); the node instantiates the class through its public no-argument constructor.
+ *
+ * <h2>Kinds</h2>
+ *
+ * What a plugin may contribute is decided by the {@code kinds} its manifest declares, and checked: a plugin that
+ * hands the node an {@link EventListener} without declaring {@link PluginKind#OBSERVE}, or a management action
+ * without {@link PluginKind#MANAGE}, is refused at start. Each method below names its kind.
+ *
+ * <h2>A plugin that fails is a plugin that is absent</h2>
+ *
+ * Every call into a plugin is wrapped by the node. A plugin that throws in {@link #start} is logged and dropped
+ * until the next start, and the node starts regardless; what "absent" means for each kind is decided by the core,
+ * never by the plugin, and is always the behaviour of a node that never had it.
+ *
+ * <h2>One instance per process</h2>
+ *
+ * A plugin is instantiated once and outlives an engine: the {@code reload} action calls {@code stop(false)} then
+ * {@code start(...)} on the same instance. The constructor must be cheap and side-effect free - it may run from a
+ * servlet's init, before any engine.
+ */
+public interface FrontcachePlugin {
+
+	/**
+	 * The engine has started: the cache exists, metrics export has not been started yet. {@link #eventListeners()}
+	 * and {@link #managementActions()} are read right after this returns.
+	 */
+	void start(PluginContext context);
+
+	/**
+	 * @param shutdown true when the process is going away; false when {@code reload} is about to start a
+	 *        replacement engine - process-wide state should survive
+	 */
+	default void stop(boolean shutdown) {
+	}
+
+	/**
+	 * The servlet or filter has told the node how it is deployed. <b>Not necessarily before {@link #start}</b>:
+	 * whichever of them sees the first request builds the engine. Called again only if the mode changes.
+	 */
+	default void onModeKnown(NodeMode mode) {
+	}
+
+	/**
+	 * {@link PluginKind#OBSERVE}: the listeners the node delivers events to, each on its own thread, through its
+	 * own bounded queue. Read once per start.
+	 */
+	default List<EventListener> eventListeners() {
+		return List.of();
+	}
+
+	/**
+	 * {@link PluginKind#MANAGE}: management actions this plugin answers on {@code /frontcache-io}, by action
+	 * name. Consulted <b>after</b> the core's own actions and before the ping fallback, so a name the core owns can
+	 * never be shadowed. The caller has already passed the API-key gate; whether it may also write is on the
+	 * request. Read once per start.
+	 */
+	default Map<String, ManagementAction> managementActions() {
+		return Map.of();
+	}
+
+	/**
+	 * {@link PluginKind#MANAGE}: registers this plugin's series on the metrics exporter's registry - an
+	 * {@code io.micrometer.core.instrument.MeterRegistry}, typed {@code Object} so this API carries no Micrometer
+	 * type. Called once per exporter, possibly before {@link #start}; meters must read state at scrape time rather
+	 * than capture it now. Names are prefixed {@code frontcache.} by the registry.
+	 */
+	default void bindMeters(Object meterRegistry) {
+	}
+}

@@ -32,6 +32,7 @@ import org.frontcache.core.RequestContext;
 import org.frontcache.guard.GuardConfigException;
 import org.frontcache.guard.GuardPredicate;
 import org.frontcache.guard.GuardPredicateFactory;
+import org.frontcache.plugin.host.CoreEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -121,10 +122,12 @@ public class BotClassifier {
 			// Cannot happen while the built-in default rule exists, but if it ever could: an empty
 			// classifier calls every crawler a guest and takes the origin with it. Keep what works.
 			logger.error("Reloading " + BOTS_CONFIG_FILE + " produced no usable rules - keeping the previous ones");
+			CoreEvents.configReloaded(BOTS_CONFIG_FILE, false, -1, List.of("no usable rules - the previous ones stay"));
 			return;
 		}
 
 		instance = reloaded;
+		CoreEvents.configReloaded(BOTS_CONFIG_FILE, true, reloaded.rules.size(), List.of());
 	}
 
 	/** for tests - installs a classifier without going through FCConfig */

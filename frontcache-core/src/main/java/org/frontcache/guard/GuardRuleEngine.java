@@ -31,6 +31,7 @@ import org.frontcache.FCConfig;
 import org.frontcache.core.ClientIpResolver;
 import org.frontcache.core.FCUtils;
 import org.frontcache.core.RequestContext;
+import org.frontcache.plugin.host.CoreEvents;
 import org.frontcache.guard.ratelimit.GuardRateLimiterRegistry;
 import org.frontcache.guard.ratelimit.RateLimitPredicate;
 import org.slf4j.Logger;
@@ -74,6 +75,9 @@ public class GuardRuleEngine {
 	private final Set<String> warnedRedirectHosts =
 			Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
 
+	// what the last load skipped - the ConfigReloaded event's reasons; replaced by every load
+	private List<String> loadProblems = new ArrayList<String>();
+
 	public GuardRuleEngine(int maxRequestURILength) {
 		this.maxRequestURILength = maxRequestURILength;
 		load();
@@ -101,6 +105,8 @@ public class GuardRuleEngine {
 		// it on every redirect whether or not configured rules were loaded at all.
 		this.redirectHostAllowlist = Collections.unmodifiableSet(allowedRedirectHosts());
 
+		this.loadProblems = new ArrayList<String>();
+
 		List<GuardRule> loaded = new ArrayList<GuardRule>();
 
 		loaded.addAll(buildInRules());
@@ -119,6 +125,8 @@ public class GuardRuleEngine {
 		releaseUnusedRateLimitBuckets();
 		warnOnMissingExemptions();
 		warnOnRateLimitWithoutTrustedProxies();
+
+		CoreEvents.configReloaded(GUARD_RULES_CONFIG_FILE, true, this.rules.size(), this.loadProblems);
 	}
 
 	/**
@@ -290,10 +298,12 @@ public class GuardRuleEngine {
 				} catch (GuardConfigException e) {
 					// one bad line must not cost the whole file
 					logger.error("Skipping guard rule (" + GUARD_RULES_CONFIG_FILE + ":" + lineNumber + "): " + e.getMessage());
+					loadProblems.add(GUARD_RULES_CONFIG_FILE + ":" + lineNumber + ": " + e.getMessage());
 				}
 			}
 		} catch (Exception e) {
 			logger.error("Can't read " + GUARD_RULES_CONFIG_FILE + " - loaded " + loaded.size() + " rule(s) before the failure", e);
+			loadProblems.add("can't read " + GUARD_RULES_CONFIG_FILE + ": " + e.getMessage());
 		} finally {
 			close(reader);
 			close(is);

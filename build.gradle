@@ -209,11 +209,11 @@ def eternitaMaven(repos) {
 	}
 }
 
-// Artifact deployment (was pom.xml). Publishes the two library modules to the Eternita
+// Artifact deployment (was pom.xml). Publishes the three library modules to the Eternita
 // S3 repo; the two distribution bundles are published from the block further down.
 // Gradle's maven-publish speaks s3:// natively.
 // Run with: ./gradlew publish  (or publishToMavenLocal for a dry run)
-configure([project(':frontcache-core'), project(':frontcache-agent')]) {
+configure([project(':frontcache-plugin-api'), project(':frontcache-core'), project(':frontcache-agent')]) {
 	apply plugin: 'maven-publish'
 
 	java {
@@ -270,6 +270,18 @@ configure([project(':frontcache-core'), project(':frontcache-agent')]) {
 	}
 }
 
+
+// The plugin API (docs: the pluggable architecture's plugin-api) - the interfaces and value types a plugin
+// compiles against, compileOnly, and nothing of the engine: PluginApiBoundaryTest (frontcache-core) fails when a
+// class here names one. frontcache-core exposes it as an api dependency, so a node, a filter-mode application
+// and the Community war all carry it. Versioned with the core; what a plugin is compatible with is the
+// plugin-api MAJOR in its manifest (PluginManifest.PLUGIN_API), not this artifact's version.
+project(':frontcache-plugin-api') {
+	dependencies {
+		// ActionResponse, the management responses' base, carries Jackson's @JsonIgnoreProperties
+		api 'com.fasterxml.jackson.core:jackson-annotations:2.22'
+	}
+}
 
 project(':frontcache-core') {
 
@@ -352,6 +364,7 @@ project(':frontcache-core') {
         provided        'jakarta.servlet:jakarta.servlet-api:6.0.0'
 		provided        'jakarta.servlet.jsp:jakarta.servlet.jsp-api:3.1.1'
 
+		api				project(':frontcache-plugin-api')
 		api 			'com.fasterxml.jackson.core:jackson-databind:2.22.1'
 		api         	'com.fasterxml.jackson.core:jackson-annotations:2.22'
         // HttpClient 5.3.1. The 4.5 branch ended at 4.5.14 (maintenance only), and 5.x is where every
