@@ -74,7 +74,7 @@ public class PluginManifestTest {
 			assertTrue(message, message.contains("'version' is missing"));
 			assertTrue(message, message.contains("'plugin-api' must be a major version number"));
 			assertTrue(message, message.contains("unknown kind 'teleport'"));
-			assertTrue(message, message.contains("'config' must be a plain file name"));
+			assertTrue(message, message.contains("'config' must be a plain .conf file name"));
 		}
 	}
 
@@ -87,6 +87,22 @@ public class PluginManifestTest {
 		} catch (IllegalArgumentException e) {
 			assertTrue(e.getMessage(), e.getMessage().contains("'id' must match"));
 		}
+	}
+
+	@Test
+	public void aConfigIsAPlainConfFileName() throws IOException {
+		for (String config : new String[] { "alerts.properties", "frontcache.properties", "conf/alerts.conf", ".conf",
+				"alerts.conf.bak" })
+		{
+			try {
+				PluginManifest.parse(props(VALID + "config = " + config + "\n"), "test");
+				fail(config + " refused");
+			} catch (IllegalArgumentException e) {
+				assertTrue(e.getMessage(), e.getMessage().contains("'config' must be a plain .conf file name"));
+			}
+		}
+		assertEquals("alerts-2.conf",
+				PluginManifest.parse(props(VALID + "config = alerts-2.conf\n"), "test").config());
 	}
 
 	@Test

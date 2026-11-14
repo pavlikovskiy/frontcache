@@ -41,6 +41,10 @@ public class PluginStats {
 	private long eventsDelivered;
 	private long eventsDropped;
 	private long errors;
+	private String config;
+	private String configStatus;
+	private List<String> configErrors = new ArrayList<>();
+	private long configLoaded;
 
 	public PluginStats() { // for JSON mapper
 	}
@@ -161,5 +165,45 @@ public class PluginStats {
 
 	public void setErrors(long errors) {
 		this.errors = errors;
+	}
+
+	/** The plugin's config file under {@code conf/}, as its manifest names it; null when it has none. */
+	public String getConfig() {
+		return config;
+	}
+
+	public void setConfig(String config) {
+		this.config = config;
+	}
+
+	/**
+	 * The last read of {@link #getConfig()}: {@code ok}, {@code absent} (no file - the plugin got an empty config),
+	 * {@code refused} (see {@link #getConfigErrors()}; at a start the plugin is then not started, on a reload it keeps
+	 * the config it had), or null when it has not been read yet or the plugin has no config.
+	 */
+	public String getConfigStatus() {
+		return configStatus;
+	}
+
+	public void setConfigStatus(String configStatus) {
+		this.configStatus = configStatus;
+	}
+
+	/** Why the last read was refused; empty otherwise. */
+	public List<String> getConfigErrors() {
+		return configErrors;
+	}
+
+	public void setConfigErrors(List<String> configErrors) {
+		this.configErrors = (null == configErrors) ? new ArrayList<>() : new ArrayList<>(configErrors);
+	}
+
+	/** When the config the plugin runs on was accepted, epoch milliseconds; 0 when never. */
+	public long getConfigLoaded() {
+		return configLoaded;
+	}
+
+	public void setConfigLoaded(long configLoaded) {
+		this.configLoaded = configLoaded;
 	}
 }

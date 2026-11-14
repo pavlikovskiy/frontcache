@@ -53,6 +53,8 @@ import org.frontcache.guard.GuardRule;
 import org.frontcache.guard.GuardRuleEntry;
 import org.frontcache.plugin.ManagementAction;
 import org.frontcache.plugin.ManagementRequest;
+import org.frontcache.plugin.event.CacheInvalidated;
+import org.frontcache.plugin.host.CoreEvents;
 import org.frontcache.plugin.host.FrontcachePlugins;
 import org.frontcache.resilience.FcResilienceReload;
 import org.frontcache.resilience.fr.FallbackConfigEntry;
@@ -224,6 +226,14 @@ public class FrontCacheIOServlet extends HttpServlet {
 			aResponse = reloadDynamicURLs(request);
 			break;
 
+		case FrontcacheAction.GET_PLUGIN_CONFIG:
+			aResponse = getPluginConfig(request);
+			break;
+
+		case FrontcacheAction.RELOAD_PLUGIN_CONFIG:
+			aResponse = reloadPluginConfig(request);
+			break;
+
 		case FrontcacheAction.PATCH:
 			aResponse = patch(request);
 			break;
@@ -279,6 +289,7 @@ public class FrontCacheIOServlet extends HttpServlet {
 			// survive it because they carry the SOURCE edge's domain and the delete was domain-scoped.
 			CacheManager.getInstance().removeFromCacheAll();
 			logger.info("Invalidation for filter: {} (whole node)", filter);
+			CoreEvents.cacheInvalidated(CacheInvalidated.SCOPE_ALL, null);
 
 			return aResponse;
 		}
@@ -286,6 +297,7 @@ public class FrontCacheIOServlet extends HttpServlet {
 		CacheManager.getInstance().removeFromCache(filter);
 
 		logger.info("Invalidation for filter: " + filter);
+		CoreEvents.cacheInvalidated(CacheInvalidated.SCOPE_FILTER, filter);
 		return aResponse;
 	}
 
@@ -753,6 +765,49 @@ public class FrontCacheIOServlet extends HttpServlet {
 		return aResponse;
 	}
 
+	/** The raw file a plugin's manifest names - never a name the caller sent. */
+	private ActionResponse getPluginConfig(HttpServletRequest req)
+	{
+		GetPluginConfigActionResponse aResponse = new GetPluginConfigActionResponse();
+		String plugin = req.getParameter("plugin");
+		aResponse.setPlugin(plugin);
+
+		String fileName = FrontcachePlugins.configFile(plugin);
+		if (null == fileName)
+		{
+			aResponse.setResponseStatus(ActionResponse.RESPONSE_STATUS_ERROR);
+			aResponse.setErrorDescription((null == plugin) ? "'plugin' is required"
+					: "no plugin '" + plugin + "' with a config on this node");
+			return aResponse;
+		}
+		aResponse.setFile(fileName);
+		aResponse.setPluginConfig(readConfigFile(fileName));
+		return aResponse;
+	}
+
+	/**
+	 * Like the core's own reload actions, gated by the API key only: it applies what is already on disk, which only
+	 * a write - {@code set-config}, gated more strictly - or the node's operator can have put there.
+	 */
+	private ActionResponse reloadPluginConfig(HttpServletRequest req)
+	{
+		ReloadPluginConfigActionResponse aResponse = new ReloadPluginConfigActionResponse();
+		String plugin = req.getParameter("plugin");
+		aResponse.setPlugin(plugin);
+
+		FrontcachePlugins.ConfigReload reload = FrontcachePlugins.reloadConfig(plugin);
+		aResponse.setFile(reload.file());
+		aResponse.setApplied(reload.ok());
+		aResponse.setState(reload.state());
+		aResponse.setErrors(reload.errors());
+		if (!reload.ok())
+		{
+			aResponse.setResponseStatus(ActionResponse.RESPONSE_STATUS_ERROR);
+			aResponse.setErrorDescription(String.join("; ", reload.errors()));
+		}
+		return aResponse;
+	}
+
 	private ActionResponse reloadDynamicURLs(HttpServletRequest req)
 	{
 		ReloadDynamicUrlsActionResponse aResponse = new ReloadDynamicUrlsActionResponse();
@@ -843,6 +898,7 @@ public class FrontCacheIOServlet extends HttpServlet {
 		Runnable r = new Runnable() {
 			public void run() {
 				CacheManager.getInstance().purge();
+				CoreEvents.cacheInvalidated(CacheInvalidated.SCOPE_PURGE, null);
 			}
 		};
 

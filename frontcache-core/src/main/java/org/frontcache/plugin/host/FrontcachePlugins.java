@@ -44,9 +44,11 @@ import org.frontcache.module.FrontcacheModule;
 import org.frontcache.plugin.FrontcachePlugin;
 import org.frontcache.plugin.ManagementAction;
 import org.frontcache.plugin.NodeMode;
+import org.frontcache.plugin.PluginConfigException;
 import org.frontcache.plugin.PluginKind;
 import org.frontcache.plugin.PluginManifest;
 import org.frontcache.plugin.event.EventListener;
+import org.frontcache.plugin.event.RequestCompleted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,6 +69,13 @@ import org.slf4j.LoggerFactory;
  * Every call into a plugin is wrapped. One that throws in {@code start} is dropped until the next start; one that
  * contributes something of a kind it did not declare (an event listener without {@code observe}, a management
  * action without {@code manage}) is refused and stopped. Nothing here may stop a node from serving.
+ *
+ * <h2>A plugin's config</h2>
+ *
+ * A manifest's {@code config} names {@code conf/<file>}, which no other plugin and no core file may be. It is read,
+ * parsed and resolved here ({@link PluginConfigs}) and handed to {@link FrontcachePlugin#configure} before every
+ * start; a refusal there is a plugin that does not start. {@link #reloadConfig} re-reads it for a running plugin
+ * (which keeps its old config when the new one is refused) and starts one that failed on its config.
  */
 public final class FrontcachePlugins {
 
@@ -78,6 +87,13 @@ public final class FrontcachePlugins {
 
 	/** {@code front-cache.plugins.<id>.queue}: a listener's queue capacity. */
 	static final String QUEUE_PROPERTY = "front-cache.plugins.%s.queue";
+
+	/** {@code front-cache.plugins.<id>.request-sample}: the share of requests its listeners get as RequestCompleted. */
+	static final String REQUEST_SAMPLE_PROPERTY = "front-cache.plugins.%s.request-sample";
+
+	static final String CONFIG_OK = "ok";
+	static final String CONFIG_ABSENT = "absent";
+	static final String CONFIG_REFUSED = "refused";
 
 	static final long GUARD_SUMMARY_INTERVAL_MILLIS = 10_000L;
 
@@ -98,6 +114,12 @@ public final class FrontcachePlugins {
 		final PluginCounters counters = new PluginCounters();
 		volatile State state;
 		volatile String reason;
+		/** The last read of the plugin's config - see PluginStats.getConfigStatus; null before the first. */
+		volatile String configStatus;
+		volatile List<String> configErrors = List.of();
+		volatile long configLoaded;
+		/** Its last start failed on its config: {@link #reloadConfig} may start it. */
+		volatile boolean failedOnConfig;
 
 		Slot(String id, PluginManifest manifest, FrontcachePlugin plugin, boolean legacy, State state, String reason) {
 			this.id = id;
@@ -123,6 +145,11 @@ public final class FrontcachePlugins {
 	private static volatile Map<String, ManagementAction> actions = Map.of();
 
 	private static volatile NodeMode mode = null;
+
+	/** Whether the engine has started the plugins and not stopped them - and with what. */
+	private static boolean running = false;
+	private static String runningDomain = null;
+	private static Supplier<List<GuardRule>> runningGuardRules = List::of;
 
 	private FrontcachePlugins() {
 	}
@@ -154,6 +181,7 @@ public final class FrontcachePlugins {
 		List<Slot> slots = new ArrayList<>();
 		Set<String> ids = new HashSet<>();
 		Set<String> classes = new HashSet<>();
+		Set<String> configs = new HashSet<>();
 
 		Enumeration<URL> manifests;
 		try {
@@ -166,12 +194,14 @@ public final class FrontcachePlugins {
 		while (manifests.hasMoreElements())
 		{
 			URL url = manifests.nextElement();
-			Slot slot = fromManifest(url, loader, ids);
+			Slot slot = fromManifest(url, loader, ids, configs);
 			slots.add(slot);
 			if (null != slot.manifest)
 			{
 				ids.add(slot.id);
 				classes.add(slot.manifest.entryClass());
+				if (null != slot.manifest.config())
+					configs.add(slot.manifest.config());
 			}
 		}
 
@@ -189,7 +219,7 @@ public final class FrontcachePlugins {
 		return Collections.unmodifiableList(slots);
 	}
 
-	private static Slot fromManifest(URL url, ClassLoader loader, Set<String> ids) {
+	private static Slot fromManifest(URL url, ClassLoader loader, Set<String> ids, Set<String> configs) {
 
 		Properties properties = new Properties();
 		try (InputStream in = url.openStream(); Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
@@ -211,6 +241,10 @@ public final class FrontcachePlugins {
 		String refusal = null;
 		if (ids.contains(manifest.id()))
 			refusal = "another plugin already has the id '" + manifest.id() + "'";
+		else if (null != manifest.config() && PluginConfigs.CORE_FILES.contains(manifest.config()))
+			refusal = "its config, conf/" + manifest.config() + ", is a file the core reads";
+		else if (null != manifest.config() && configs.contains(manifest.config()))
+			refusal = "another plugin already has the config conf/" + manifest.config();
 		else if (PluginManifest.PLUGIN_API != manifest.pluginApi())
 			refusal = "built for plugin-api " + manifest.pluginApi() + "; this node offers plugin-api "
 					+ PluginManifest.PLUGIN_API;
@@ -285,6 +319,9 @@ public final class FrontcachePlugins {
 	public static synchronized void start(String publicDomain, Supplier<List<GuardRule>> guardRules) {
 
 		CoreEvents.setSite(publicDomain);
+		running = true;
+		runningDomain = publicDomain;
+		runningGuardRules = (null == guardRules) ? List::of : guardRules;
 
 		List<Slot> ok = new ArrayList<>();
 		Map<String, ManagementAction> byName = new LinkedHashMap<>();
@@ -309,6 +346,15 @@ public final class FrontcachePlugins {
 	private static boolean startOne(Slot slot, String publicDomain, Map<String, ManagementAction> byName) {
 
 		FrontcachePlugin plugin = slot.plugin;
+		slot.failedOnConfig = false;
+		if (null != slot.manifest.config() && !configure(slot))
+		{
+			slot.failedOnConfig = true;
+			fail(slot, State.FAILED, "conf/" + slot.manifest.config() + " is refused: "
+					+ String.join("; ", slot.configErrors), null);
+			return false;
+		}
+
 		try {
 			plugin.start(new CorePluginContext(slot.manifest, publicDomain));
 		} catch (Throwable t) {
@@ -342,15 +388,24 @@ public final class FrontcachePlugins {
 		}
 
 		int capacity = queueCapacity(slot.id);
+		double sample = requestSample(slot.id);
+		boolean samplesRequests = false;
 		for (EventListener listener : listeners)
 		{
 			try {
-				FcEventBus.subscribe(slot.id, listener, capacity, slot.counters);
+				long bits = FcEventBus.subscribe(slot.id, listener, capacity, sample, slot.counters);
+				samplesRequests |= 0L != (bits & FcEventBus.REQUEST_COMPLETED);
 			} catch (Throwable t) {
 				slot.counters.errors.increment();
 				logger.error("Plugin '" + slot.id + "' has an event listener that could not be subscribed", t);
 			}
 		}
+		if (samplesRequests && 1.0 <= sample)
+			logger.warn("Plugin '{}' receives every request as a RequestCompleted event ({} = 1.0) - one event per"
+					+ " request; a full queue drops and counts", slot.id, String.format(REQUEST_SAMPLE_PROPERTY, slot.id));
+		else if (samplesRequests)
+			logger.info("Plugin '{}' receives {}% of requests as RequestCompleted events ({})", slot.id, sample * 100,
+					String.format(REQUEST_SAMPLE_PROPERTY, slot.id));
 
 		for (Map.Entry<String, ManagementAction> e : own.entrySet())
 		{
@@ -365,6 +420,153 @@ public final class FrontcachePlugins {
 		slot.reason = null;
 		logger.info("Plugin '{}' started: {}", slot.id, slot.manifest);
 		return true;
+	}
+
+	/**
+	 * Reads the slot's config and hands it to the plugin.
+	 *
+	 * @return whether the plugin accepted it; the slot's config fields say what happened either way
+	 */
+	private static boolean configure(Slot slot) {
+
+		String file = slot.manifest.config();
+		PluginConfigs.Read read;
+		try {
+			read = PluginConfigs.read(file);
+		} catch (PluginConfigException e) {
+			configRefused(slot, e.reasons());
+			return false;
+		}
+
+		try {
+			slot.plugin.configure(read.config());
+		} catch (PluginConfigException e) {
+			configRefused(slot, e.reasons());
+			return false;
+		} catch (Throwable t) {
+			slot.counters.errors.increment();
+			logger.error("Plugin '" + slot.id + "' threw from configure", t);
+			configRefused(slot, List.of("configure threw " + t));
+			return false;
+		}
+
+		slot.configStatus = read.absent() ? CONFIG_ABSENT : CONFIG_OK;
+		slot.configErrors = List.of();
+		slot.configLoaded = System.currentTimeMillis();
+		if (read.absent())
+			logger.info("Plugin '{}': conf/{} is absent - configured with an empty config", slot.id, file);
+		else
+			logger.info("Plugin '{}': conf/{} accepted", slot.id, file);
+		return true;
+	}
+
+	private static void configRefused(Slot slot, List<String> reasons) {
+		slot.configStatus = CONFIG_REFUSED;
+		slot.configErrors = (null == reasons || reasons.isEmpty()) ? List.of("refused, with no reason given")
+				: List.copyOf(reasons);
+		logger.error("Plugin '{}': conf/{} is refused - {}", slot.id, slot.manifest.config(),
+				String.join("; ", slot.configErrors));
+	}
+
+	/** What {@link #reloadConfig} did. */
+	public record ConfigReload(boolean ok, String file, String state, List<String> errors) {
+	}
+
+	/**
+	 * {@code reload-plugin-config}: re-reads a plugin's {@code conf/<config>}. A running plugin is
+	 * {@linkplain FrontcachePlugin#configure configured} with it - and keeps the config it had when it refuses the
+	 * new one; a plugin whose last start failed on its config is started with it. Emits {@code ConfigReloaded}.
+	 *
+	 * @return the outcome; never null
+	 */
+	public static synchronized ConfigReload reloadConfig(String id) {
+
+		Slot slot = configurable(id);
+		if (null == slot)
+			return new ConfigReload(false, null, null, List.of(noConfigReason(id)));
+		String file = slot.manifest.config();
+
+		boolean ok;
+		if (State.STARTED == slot.state)
+		{
+			ok = configure(slot);
+		}
+		else if (running && State.FAILED == slot.state && slot.failedOnConfig)
+		{
+			Map<String, ManagementAction> byName = new LinkedHashMap<>(actions);
+			ok = startOne(slot, runningDomain, byName);
+			if (ok)
+			{
+				List<Slot> next = new ArrayList<>(started);
+				next.add(slot);
+				started = Collections.unmodifiableList(next);
+				actions = Collections.unmodifiableMap(byName);
+				FcEventBus.startGuardSummary(runningGuardRules, GUARD_SUMMARY_INTERVAL_MILLIS);
+				CoreEvents.pluginStateChanged(slot.id, slot.state.label(), slot.reason);
+			}
+		}
+		else
+		{
+			return new ConfigReload(false, file, slot.state.label(), List.of("plugin '" + id + "' is "
+					+ slot.state.label() + ((null == slot.reason) ? "" : " (" + slot.reason + ")")
+					+ " - its config is read when it starts"));
+		}
+
+		// a config accepted by a plugin whose start then threw is not a config error - the slot's reason says why
+		List<String> errors = ok ? List.of()
+				: !slot.configErrors.isEmpty() ? slot.configErrors : List.of(String.valueOf(slot.reason));
+		CoreEvents.configReloaded(file, ok, -1, errors);
+		return new ConfigReload(ok, file, slot.state.label(), errors);
+	}
+
+	/**
+	 * Whether a config the caller wants to write would be accepted: it parses, resolves, and the plugin's
+	 * {@link FrontcachePlugin#validateConfig} accepts it. Touches nothing the plugin runs on.
+	 *
+	 * @return every reason it would be refused; empty when it would not
+	 */
+	public static List<String> validateConfig(String id, String content) {
+
+		Slot slot = configurable(id);
+		if (null == slot)
+			return List.of(noConfigReason(id));
+
+		try {
+			slot.plugin.validateConfig(PluginConfigs.parse(slot.manifest.config(), (null == content) ? "" : content));
+			return List.of();
+		} catch (PluginConfigException e) {
+			return e.reasons().isEmpty() ? List.of("refused, with no reason given") : e.reasons();
+		} catch (Throwable t) {
+			slot.counters.errors.increment();
+			logger.error("Plugin '" + id + "' threw from validateConfig", t);
+			return List.of("validateConfig threw " + t);
+		}
+	}
+
+	/**
+	 * The {@code conf/} file a loaded plugin's manifest names - never composed from a caller's input - or null when
+	 * there is no such plugin, it was refused, or it has no config.
+	 */
+	public static String configFile(String id) {
+		Slot slot = configurable(id);
+		return (null == slot) ? null : slot.manifest.config();
+	}
+
+	private static Slot configurable(String id) {
+		if (null == id)
+			return null;
+		for (Slot slot : loaded())
+			if (slot.id.equals(id.trim()))
+				return (slot.refused() || null == slot.manifest || null == slot.manifest.config()) ? null : slot;
+		return null;
+	}
+
+	private static String noConfigReason(String id) {
+		for (Slot slot : loaded())
+			if (slot.id.equals(id))
+				return slot.refused() ? "plugin '" + id + "' is refused: " + slot.reason
+						: "plugin '" + id + "' has no config";
+		return "no plugin '" + id + "' on this node";
 	}
 
 	private static void fail(Slot slot, State state, String reason, Throwable t) {
@@ -392,9 +594,26 @@ public final class FrontcachePlugins {
 		return FcEventBus.DEFAULT_QUEUE_CAPACITY;
 	}
 
+	private static double requestSample(String id) {
+		String property = String.format(REQUEST_SAMPLE_PROPERTY, id);
+		String value = FCConfig.getProperty(property);
+		if (null == value)
+			return RequestCompleted.DEFAULT_SAMPLE;
+		try {
+			double sample = Double.parseDouble(value.trim());
+			if (0.0 < sample && sample <= 1.0)
+				return sample;
+		} catch (NumberFormatException e) {
+			// fall through
+		}
+		logger.warn("{} must be a share in (0, 1]: '{}' - using {}", property, value, RequestCompleted.DEFAULT_SAMPLE);
+		return RequestCompleted.DEFAULT_SAMPLE;
+	}
+
 	/** @param shutdown see {@link FrontcachePlugin#stop(boolean)} */
 	public static synchronized void stop(boolean shutdown) {
 
+		running = false;
 		FcEventBus.stopAll();
 
 		for (Slot slot : started)
@@ -539,6 +758,13 @@ public final class FrontcachePlugins {
 		stats.setEventsDelivered(slot.counters.delivered.sum());
 		stats.setEventsDropped(slot.counters.dropped.sum());
 		stats.setErrors(slot.counters.errors.sum());
+		if (null != manifest && null != manifest.config())
+		{
+			stats.setConfig(manifest.config());
+			stats.setConfigStatus(slot.configStatus);
+			stats.setConfigErrors(slot.configErrors);
+			stats.setConfigLoaded(slot.configLoaded);
+		}
 		return stats;
 	}
 

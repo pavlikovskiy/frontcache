@@ -33,17 +33,21 @@ import org.junit.Test;
 /**
  * {@code frontcache-plugin-api} is what a plugin compiles against and what a plugin's own class loader will see:
  * it names <b>no engine class</b> - plugins see views and value types, never the engine's mutable objects - and no
- * library but Jackson's annotations. A plugin built against one {@code plugin-api} major must survive core
- * upgrades, which is only true while nothing of the engine leaks into its signatures.
+ * library but Jackson's annotations and Typesafe Config's {@code Config} (a plugin's config is handed over parsed: a
+ * stable, dependency-free library the core carries anyway). A plugin built against one {@code plugin-api} major must
+ * survive core upgrades, which is only true while nothing of the engine leaks into its signatures.
  */
 public class PluginApiBoundaryTest {
 
 	private static final Path API_SOURCES = Paths.get("../frontcache-plugin-api/src/main/java");
 
-	/** What an API source may import: the JDK, the API itself, ActionResponse (moved into it), Jackson's annotations. */
+	/**
+	 * What an API source may import: the JDK, the API itself, ActionResponse (moved into it), Jackson's annotations
+	 * and Typesafe Config's {@code Config} - nothing else of either library.
+	 */
 	private static final Pattern ALLOWED_IMPORT = Pattern.compile(
 			"java\\.[\\w.]+|javax\\.annotation\\.[\\w.]+|org\\.frontcache\\.plugin(\\.[\\w.]+)?|org\\.frontcache\\.io\\.ActionResponse"
-					+ "|com\\.fasterxml\\.jackson\\.annotation\\.[\\w.]+");
+					+ "|com\\.fasterxml\\.jackson\\.annotation\\.[\\w.]+|com\\.typesafe\\.config\\.Config");
 
 	/** A fully-qualified org.frontcache name written in code - an import or not. */
 	private static final Pattern FRONTCACHE_NAME = Pattern.compile("\\borg\\.frontcache\\.[\\w.]+");

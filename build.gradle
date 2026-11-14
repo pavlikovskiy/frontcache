@@ -273,13 +273,16 @@ configure([project(':frontcache-plugin-api'), project(':frontcache-core'), proje
 
 // The plugin API (docs: the pluggable architecture's plugin-api) - the interfaces and value types a plugin
 // compiles against, compileOnly, and nothing of the engine: PluginApiBoundaryTest (frontcache-core) fails when a
-// class here names one. frontcache-core exposes it as an api dependency, so a node, a filter-mode application
-// and the Community war all carry it. Versioned with the core; what a plugin is compatible with is the
+// class here names one, or a library but Jackson's annotations and Typesafe Config. frontcache-core exposes it
+// as an api dependency, so a node, a filter-mode application and the Community war all carry it. Versioned with the core; what a plugin is compatible with is the
 // plugin-api MAJOR in its manifest (PluginManifest.PLUGIN_API), not this artifact's version.
 project(':frontcache-plugin-api') {
 	dependencies {
 		// ActionResponse, the management responses' base, carries Jackson's @JsonIgnoreProperties
 		api 'com.fasterxml.jackson.core:jackson-annotations:2.22'
+		// A plugin's config (FrontcachePlugin.configure) is handed over as a parsed, resolved Typesafe Config -
+		// HOCON, the console's format. The core already carries it at this version; no dependencies of its own.
+		api 'com.typesafe:config:1.4.9'
 	}
 }
 

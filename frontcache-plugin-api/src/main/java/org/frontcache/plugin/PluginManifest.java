@@ -56,7 +56,8 @@ public final class PluginManifest {
 
 	private static final Pattern CLASS_NAME = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
 
-	private static final Pattern CONFIG_FILE = Pattern.compile("[A-Za-z0-9_][A-Za-z0-9._-]{0,63}");
+	/** A plain HOCON file name under {@code conf/}: no directory, ends in {@code .conf}. */
+	private static final Pattern CONFIG_FILE = Pattern.compile("[A-Za-z0-9_][A-Za-z0-9._-]{0,58}\\.conf");
 
 	private static final Set<String> KEYS = Set.of("id", "class", "name", "version", "vendor", "license",
 			"plugin-api", "kinds", "config");
@@ -149,7 +150,7 @@ public final class PluginManifest {
 
 		String config = value(properties, "config");
 		if (null != config && !CONFIG_FILE.matcher(config).matches())
-			errors.add("'config' must be a plain file name under conf/: '" + config + "'");
+			errors.add("'config' must be a plain .conf file name under conf/ (HOCON): '" + config + "'");
 
 		Set<String> unknown = new TreeSet<>();
 		for (String key : properties.stringPropertyNames())
@@ -234,7 +235,7 @@ public final class PluginManifest {
 		return false;
 	}
 
-	/** The plugin's config file under {@code conf/}, or null. */
+	/** The plugin's config file under {@code conf/} - a plain {@code .conf} name, HOCON - or null. */
 	public String config() {
 		return config;
 	}

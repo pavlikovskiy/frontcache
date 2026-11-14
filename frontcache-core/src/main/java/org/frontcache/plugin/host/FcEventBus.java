@@ -25,14 +25,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import org.frontcache.guard.GuardRule;
+import org.frontcache.plugin.event.CacheInvalidated;
 import org.frontcache.plugin.event.CircuitStateChanged;
 import org.frontcache.plugin.event.ConfigReloaded;
 import org.frontcache.plugin.event.EventListener;
+import org.frontcache.plugin.event.FallbackServed;
 import org.frontcache.plugin.event.FcEvent;
 import org.frontcache.plugin.event.GuardMatched;
 import org.frontcache.plugin.event.GuardSummary;
+import org.frontcache.plugin.event.OriginError;
 import org.frontcache.plugin.event.PluginStateChanged;
 import org.frontcache.plugin.event.RateLimitExceeded;
+import org.frontcache.plugin.event.RequestCompleted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +56,13 @@ import org.slf4j.LoggerFactory;
  * accumulated, up to {@value #MAX_BATCH} at a time: prompt when traffic is quiet, batched when it is not. A listener
  * that throws is logged (once a minute) and keeps receiving.
  *
+ * <h2>Sampled events</h2>
+ *
+ * {@link RequestCompleted} is the one event that can come from every request, so each subscriber names the share
+ * it wants ({@code front-cache.plugins.<id>.request-sample}). The emit point draws one number per request and
+ * builds the event only when the draw is under the largest share wanted ({@link #requestSample()}); each subscriber
+ * then takes it when the same draw is under its own share - so a subscriber's sample is a subset of any larger one.
+ *
  * <p>Subscribers are replaced wholesale on every engine start ({@link FrontcachePlugins}); {@link #stopAll()} on
  * engine stop counts whatever is still queued as dropped.
  */
@@ -65,6 +76,10 @@ public final class FcEventBus {
 	public static final long CIRCUIT_STATE_CHANGED = 1L << 3;
 	public static final long CONFIG_RELOADED = 1L << 4;
 	public static final long PLUGIN_STATE_CHANGED = 1L << 5;
+	public static final long FALLBACK_SERVED = 1L << 6;
+	public static final long ORIGIN_ERROR = 1L << 7;
+	public static final long CACHE_INVALIDATED = 1L << 8;
+	public static final long REQUEST_COMPLETED = 1L << 9;
 
 	/** Every event type this node emits, and its bit. A type a listener names that is not here is never emitted. */
 	static final Map<Class<? extends FcEvent>, Long> BITS = Map.of(
@@ -73,7 +88,11 @@ public final class FcEventBus {
 			GuardSummary.class, GUARD_SUMMARY,
 			CircuitStateChanged.class, CIRCUIT_STATE_CHANGED,
 			ConfigReloaded.class, CONFIG_RELOADED,
-			PluginStateChanged.class, PLUGIN_STATE_CHANGED);
+			PluginStateChanged.class, PLUGIN_STATE_CHANGED,
+			FallbackServed.class, FALLBACK_SERVED,
+			OriginError.class, ORIGIN_ERROR,
+			CacheInvalidated.class, CACHE_INVALIDATED,
+			RequestCompleted.class, REQUEST_COMPLETED);
 
 	public static final int DEFAULT_QUEUE_CAPACITY = 10_000;
 
@@ -86,6 +105,9 @@ public final class FcEventBus {
 
 	private static volatile List<Subscriber> subscribers = List.of();
 
+	/** The largest {@link RequestCompleted} share any subscriber wants; 0 when none subscribed. */
+	private static volatile double requestSample = 0.0;
+
 	private static GuardSummaryTicker ticker = null;
 
 	private FcEventBus() {
@@ -96,23 +118,44 @@ public final class FcEventBus {
 		return 0L != (mask & bit);
 	}
 
+	/** The largest share of requests a subscriber wants as {@link RequestCompleted}; 0 when none does. */
+	public static double requestSample() {
+		return requestSample;
+	}
+
 	/** Offers the event to every subscriber of its type; never blocks. */
 	public static void publish(FcEvent event) {
+		publish(event, 0.0);
+	}
+
+	/**
+	 * Offers a sampled event to every subscriber of its type whose share is above {@code draw}; never blocks.
+	 *
+	 * @param draw the emit point's draw in [0, 1) - see "Sampled events"
+	 */
+	public static void publish(FcEvent event, double draw) {
 
 		Long bit = BITS.get(event.getClass());
 		if (null == bit || !wants(bit))
 			return;
 
 		for (Subscriber subscriber : subscribers)
-			subscriber.offer(event, bit);
+			subscriber.offer(event, bit, draw);
+	}
+
+	/** {@link #subscribe(String, EventListener, int, double, PluginCounters)} with the default request sample. */
+	static long subscribe(String pluginId, EventListener listener, int capacity, PluginCounters counters) {
+		return subscribe(pluginId, listener, capacity, RequestCompleted.DEFAULT_SAMPLE, counters);
 	}
 
 	/**
 	 * Starts a dispatcher for one listener.
 	 *
+	 * @param requestSample the share of requests it gets as {@link RequestCompleted}, in (0, 1]
 	 * @return the bits the listener subscribed to that this node emits
 	 */
-	static synchronized long subscribe(String pluginId, EventListener listener, int capacity, PluginCounters counters) {
+	static synchronized long subscribe(String pluginId, EventListener listener, int capacity, double requestSample,
+			PluginCounters counters) {
 
 		Set<Class<? extends FcEvent>> types = listener.subscribes();
 		long listenerMask = 0L;
@@ -133,10 +176,12 @@ public final class FcEventBus {
 			return 0L;
 		}
 
-		Subscriber subscriber = new Subscriber(pluginId, listener, listenerMask, Math.max(1, capacity), counters);
+		double sample = (0L == (listenerMask & REQUEST_COMPLETED)) ? 0.0 : Math.min(1.0, Math.max(0.0, requestSample));
+		Subscriber subscriber = new Subscriber(pluginId, listener, listenerMask, Math.max(1, capacity), sample, counters);
 		List<Subscriber> next = new ArrayList<>(subscribers);
 		next.add(subscriber);
 		subscribers = Collections.unmodifiableList(next);
+		FcEventBus.requestSample = Math.max(FcEventBus.requestSample, sample);
 		mask |= listenerMask;
 		subscriber.start();
 		return listenerMask;
@@ -161,6 +206,7 @@ public final class FcEventBus {
 
 		List<Subscriber> stopping = subscribers;
 		mask = 0L;
+		requestSample = 0.0;
 		subscribers = List.of();
 		for (Subscriber subscriber : stopping)
 			subscriber.stop();
@@ -172,16 +218,19 @@ public final class FcEventBus {
 		private final String pluginId;
 		private final EventListener listener;
 		private final long mask;
+		private final double requestSample;
 		private final ArrayBlockingQueue<FcEvent> queue;
 		private final PluginCounters counters;
 		private final Thread thread;
 		private volatile boolean running = true;
 		private long lastErrorLog = 0L;
 
-		Subscriber(String pluginId, EventListener listener, long mask, int capacity, PluginCounters counters) {
+		Subscriber(String pluginId, EventListener listener, long mask, int capacity, double requestSample,
+				PluginCounters counters) {
 			this.pluginId = pluginId;
 			this.listener = listener;
 			this.mask = mask;
+			this.requestSample = requestSample;
 			this.queue = new ArrayBlockingQueue<>(capacity);
 			this.counters = counters;
 			this.thread = new Thread(this, "fc-plugin-" + pluginId + "-events");
@@ -192,8 +241,12 @@ public final class FcEventBus {
 			thread.start();
 		}
 
-		void offer(FcEvent event, long bit) {
-			if (0L != (mask & bit) && !queue.offer(event))
+		void offer(FcEvent event, long bit, double draw) {
+			if (0L == (mask & bit))
+				return;
+			if (REQUEST_COMPLETED == bit && draw >= requestSample)
+				return; // not in this subscriber's sample
+			if (!queue.offer(event))
 				counters.dropped.increment();
 		}
 

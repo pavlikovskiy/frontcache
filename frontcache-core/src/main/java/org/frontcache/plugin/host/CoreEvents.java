@@ -16,16 +16,23 @@
 package org.frontcache.plugin.host;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.frontcache.FCConfig;
 import org.frontcache.core.RequestContext;
+import org.frontcache.core.FCHeaders;
+import org.frontcache.plugin.event.CacheInvalidated;
 import org.frontcache.plugin.event.CircuitStateChanged;
 import org.frontcache.plugin.event.ConfigReloaded;
+import org.frontcache.plugin.event.FallbackServed;
 import org.frontcache.plugin.event.FcEvent;
 import org.frontcache.plugin.event.GuardMatched;
+import org.frontcache.plugin.event.OriginError;
 import org.frontcache.plugin.event.PluginStateChanged;
 import org.frontcache.plugin.event.RateLimitExceeded;
+import org.frontcache.plugin.event.RequestCompleted;
 
 /**
  * The core's emit points, one method per event: each checks {@link FcEventBus#wants} before building anything, so
@@ -96,8 +103,101 @@ public final class CoreEvents {
 		FcEventBus.publish(new PluginStateChanged(System.currentTimeMillis(), node(), site, plugin, state, reason));
 	}
 
+	/**
+	 * A resilience command's origin call failed.
+	 *
+	 * @param context null for a call made outside a request (a management lookup)
+	 * @param failure the command's failure event, as {@link #failureName} spells it
+	 * @param status  the origin's status when it answered one outside 2xx-4xx; 0 otherwise
+	 * @param cause   what the call threw; null for a refusal (circuit, bulkhead, pool)
+	 */
+	public static void originError(RequestContext context, String command, String failure, int status, String uri,
+			Throwable cause, long latencyMillis) {
+		if (!FcEventBus.wants(FcEventBus.ORIGIN_ERROR))
+			return;
+		try {
+			FcEventBus.publish(new OriginError(System.currentTimeMillis(), node(), site, requestId(context), command,
+					failure, status, truncate(uri), className(cause), latencyMillis));
+		} catch (RuntimeException e) {
+			// as above
+		}
+	}
+
+	/**
+	 * A fallback was served instead of the origin.
+	 *
+	 * @param context null for a call made outside a request
+	 * @param cause   what the command threw; null for a refusal
+	 */
+	public static void fallbackServed(RequestContext context, String command, String failure, String uri,
+			Throwable cause) {
+		if (!FcEventBus.wants(FcEventBus.FALLBACK_SERVED))
+			return;
+		try {
+			FcEventBus.publish(new FallbackServed(System.currentTimeMillis(), node(), site, requestId(context), command,
+					failure, truncate(uri), className(cause)));
+		} catch (RuntimeException e) {
+			// as above
+		}
+	}
+
+	/** @param filter null for {@code all} and {@code purge} */
+	public static void cacheInvalidated(String scope, String filter) {
+		if (!FcEventBus.wants(FcEventBus.CACHE_INVALIDATED))
+			return;
+		FcEventBus.publish(new CacheInvalidated(System.currentTimeMillis(), node(), site, scope, filter));
+	}
+
+	/**
+	 * A request was logged. Only a top-level one is an event, and only when the draw falls in a subscriber's sample
+	 * - so a node that is observed but not for requests pays one volatile read here, and one that is pays a random
+	 * draw per request and builds the event for the sampled share only.
+	 *
+	 * @param cache {@code from-cache}, {@code dynamic} or {@code dynamic-soft}, as the request log writes it
+	 */
+	public static void requestCompleted(RequestContext context, boolean cacheable, String cache,
+			long runtimeMillis, long lengthBytes) {
+		if (!FcEventBus.wants(FcEventBus.REQUEST_COMPLETED))
+			return;
+		try {
+			if (!FCHeaders.COMPONENT_TOPLEVEL.equals(context.getRequestType()))
+				return;
+			double draw = ThreadLocalRandom.current().nextDouble();
+			if (draw >= FcEventBus.requestSample())
+				return;
+
+			boolean error = context.isFallbackUsed();
+			String method = (null == context.getRequest()) ? null : context.getRequest().getMethod();
+			FcEventBus.publish(new RequestCompleted(System.currentTimeMillis(), node(), site, context.getRequestId(),
+					method, uri(context), error ? "error" : "success", cacheable, cache, runtimeMillis, lengthBytes,
+					context.getRateLimitKey(), context.getClientType(), context.getClientTypeRule(),
+					truncate(context.getUserAgent()), error ? context.getFallbackReason() : null), draw);
+		} catch (RuntimeException e) {
+			// a request view that cannot answer (a recycled request) is no reason to fail the request
+		}
+	}
+
+	/** A resilience event type as an event spells it: {@code TIMEOUT} -> {@code timeout}. */
+	public static String failureName(Enum<?> failure) {
+		return (null == failure) ? null : failure.name().toLowerCase(Locale.ROOT).replace('_', '-');
+	}
+
+	private static String requestId(RequestContext context) {
+		return (null == context) ? null : context.getRequestId();
+	}
+
+	private static String className(Throwable cause) {
+		return (null == cause) ? null : cause.getClass().getName();
+	}
+
+	private static String truncate(String value) {
+		if (null == value)
+			return null;
+		return (value.length() > FcEvent.MAX_URI_LENGTH) ? value.substring(0, FcEvent.MAX_URI_LENGTH) : value;
+	}
+
 	/** host + path + query, as the guard log line writes it, truncated. */
-	static String uri(RequestContext context) {
+	public static String uri(RequestContext context) {
 		String uri = Objects.toString(context.getFrontCacheHost(), "") + Objects.toString(context.getRequestURI(), "")
 				+ Objects.toString(context.getRequestQueryString(), "");
 		return (uri.length() > FcEvent.MAX_URI_LENGTH) ? uri.substring(0, FcEvent.MAX_URI_LENGTH) : uri;

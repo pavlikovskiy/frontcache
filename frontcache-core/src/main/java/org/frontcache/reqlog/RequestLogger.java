@@ -23,6 +23,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.frontcache.core.FCHeaders;
 import org.frontcache.core.RequestContext;
+import org.frontcache.plugin.host.CoreEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -248,6 +249,9 @@ public class RequestLogger {
 		.append(SEPARATOR).append("\"").append(userAgent).append("\"");
 
 		logger.trace(sb4file.toString());
+
+		// the same line, as an event for a plugin that observes requests (sampled; top-level requests only)
+		CoreEvents.requestCompleted(context, isCacheable, requestTypeDynamicCachedSoft, runtimeMillis, lengthBytes);
 
 		// also write non-successful requests to the dedicated failed-requests log, with the
 		// failure category appended as the last column for easy filtering. No HTTP-status column

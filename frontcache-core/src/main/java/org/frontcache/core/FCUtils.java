@@ -505,7 +505,7 @@ public class FCUtils {
 		{
 //			logger.error(new String(respData));
 			// error
-			throw new FrontCacheException("Wrong response code " + httpResponseCode + " for " + url);
+			throw FrontCacheException.originStatus(httpResponseCode, "Wrong response code " + httpResponseCode + " for " + url);
 		}
 
 		// process redirects
